@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
 </p>
 
-<h1 align="center">⌨️ tppanel — Tmux Plugin Panel</h1>
+<h1 align="center">⌨️ Tmux Plugin Panel</h1>
 
 <p align="center">
   <b>A full-featured TUI plugin manager for tmux — the modern alternative to TPM.</b><br>
@@ -16,14 +16,14 @@
 </p>
 
 <p align="center">
-  <img src="screenshot.png" alt="tppanel screenshot" width="900">
+  <img src="screenshot.png" alt="Tmux Plugin Panel screenshot" width="900">
 </p>
 
 ---
 
-## Why tppanel?
+## Why Tmux Plugin Panel?
 
-[TPM](https://github.com/tmux-plugins/tpm) works, but it's a shell script with no UI, no search, no browsing. **tppanel** gives you a complete graphical plugin manager — think "app store for tmux" — right inside your terminal:
+[TPM](https://github.com/tmux-plugins/tpm) works, but it's a shell script with no UI, no search, no browsing. **Tmux Plugin Panel** gives you a complete graphical plugin manager — think "app store for tmux" — right inside your terminal:
 
 - **Browse** a curated registry of 40+ plugins, sorted by category and stars
 - **Search** GitHub for any tmux plugin in real-time
@@ -72,7 +72,7 @@ tppanel
 
 ### First Run
 
-1. **tppanel** auto-detects your tmux installation and config file
+1. **Tmux Plugin Panel** auto-detects your tmux installation and config file
 2. If no `tmux.conf` exists, press `c` to create one
 3. Browse plugins → press `Enter` to install
 4. Press `R` to reload tmux with your new plugins
@@ -116,7 +116,7 @@ src/
 
 ## Plugin Registry
 
-tppanel ships with a curated registry of popular tmux plugins covering:
+**Tmux Plugin Panel** ships with a curated registry of popular tmux plugins covering:
 
 - ⭐ **Essential** — TPM, tmux-sensible, tmux-256color
 - 🎨 **Themes** — Catppuccin, Dracula, Nord, Tokyo Night, Rose Pine, and more
@@ -130,7 +130,7 @@ The registry is fetched from GitHub on startup and cached locally. An embedded c
 
 ### Custom Registry
 
-Point tppanel at your own registry by hosting a JSON file matching the schema in `registry.json` and modifying the `REGISTRY_URL` constant.
+Point **Tmux Plugin Panel** at your own registry by hosting a JSON file matching the schema in `registry.json` and modifying the `REGISTRY_URL` constant.
 
 ## Tech Stack
 
@@ -142,7 +142,7 @@ Point tppanel at your own registry by hosting a JSON file matching the schema in
 
 ## Configuration
 
-tppanel uses the standard TPM plugin syntax in your tmux config:
+**Tmux Plugin Panel** uses the standard TPM plugin syntax in your tmux config:
 
 ```bash
 # ~/.tmux.conf
