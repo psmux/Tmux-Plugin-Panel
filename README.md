@@ -15,6 +15,10 @@
   <code>cargo install --path .</code>&nbsp;&nbsp;→&nbsp;&nbsp;<code>tppanel</code>
 </p>
 
+<p align="center">
+  <img src="screenshot.png" alt="tppanel screenshot" width="900">
+</p>
+
 ---
 
 ## Why tppanel?
@@ -51,8 +55,8 @@
 
 ```bash
 # Clone and build
-git clone https://github.com/marlocarlo/tppanel.git
-cd tppanel
+git clone https://github.com/marlocarlo/Tmux-Plugin-Panel.git
+cd Tmux-Plugin-Panel
 cargo build --release
 
 # Run it
