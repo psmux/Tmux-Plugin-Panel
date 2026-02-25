@@ -1,0 +1,326 @@
+{
+  "version": 2,
+  "updated": "2026-02-24",
+  "plugins": [
+    {
+      "repo": "tmux-plugins/tpm",
+      "name": "TPM",
+      "description": "Tmux Plugin Manager — reference only, tppanel replaces this",
+      "category": "essential",
+      "stars": 14200,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-sensible",
+      "name": "tmux-sensible",
+      "description": "Universal sane tmux defaults everyone can agree on",
+      "category": "essential",
+      "stars": 5800,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "catppuccin/tmux",
+      "name": "Catppuccin",
+      "description": "Soothing pastel theme — Latte, Frappe, Macchiato & Mocha",
+      "category": "theme",
+      "stars": 2100,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "dracula/tmux",
+      "name": "Dracula",
+      "description": "Dark theme for tmux — status bar modules require bash",
+      "category": "theme",
+      "stars": 700,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "arcticicestudio/nord-tmux",
+      "name": "Nord",
+      "description": "Arctic, north-bluish clean and elegant color theme",
+      "category": "theme",
+      "stars": 1100,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "fabioluciano/tmux-tokyo-night",
+      "name": "Tokyo Night",
+      "description": "Tokyo Night color scheme for tmux",
+      "category": "theme",
+      "stars": 400,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "odedlaz/tmux-onedark-theme",
+      "name": "One Dark",
+      "description": "Atom One Dark theme for tmux",
+      "category": "theme",
+      "stars": 600,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "seebi/tmux-colors-solarized",
+      "name": "Solarized",
+      "description": "Solarized light/dark color theme for tmux",
+      "category": "theme",
+      "stars": 1100,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "wfxr/tmux-power",
+      "name": "tmux-power",
+      "description": "Powerline-style tmux theme — requires bash for status segments",
+      "category": "theme",
+      "stars": 600,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "jimeh/tmux-themepack",
+      "name": "Themepack",
+      "description": "A collection of tmux themes — powerline, basic, and more",
+      "category": "theme",
+      "stars": 1700,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "2KAbhishek/tmux2k",
+      "name": "tmux2k",
+      "description": "Beautiful powerline theme — requires bash for status segments",
+      "category": "theme",
+      "stars": 500,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "rose-pine/tmux",
+      "name": "Rose Pine",
+      "description": "Soho vibes — all natural pine, faux fur, and a bit of soho",
+      "category": "theme",
+      "stars": 200,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "erikw/tmux-powerline",
+      "name": "tmux-powerline",
+      "description": "Hackable statusbar with segments and themes via powerline — bash required",
+      "category": "theme",
+      "stars": 3400,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-resurrect",
+      "name": "tmux-resurrect",
+      "description": "Persists tmux sessions across restarts — panes, layout, everything",
+      "category": "session",
+      "stars": 11400,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-continuum",
+      "name": "tmux-continuum",
+      "description": "Continuous saving + automatic restore of tmux environment",
+      "category": "session",
+      "stars": 3400,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-sessionist",
+      "name": "tmux-sessionist",
+      "description": "Lightweight session switching and management utilities",
+      "category": "session",
+      "stars": 400,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "27medkamal/tmux-session-wizard",
+      "name": "Session Wizard",
+      "description": "fzf + zoxide powered session management",
+      "category": "session",
+      "stars": 300,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "omerxx/tmux-sessionx",
+      "name": "sessionx",
+      "description": "Beautiful session manager with fzf preview",
+      "category": "session",
+      "stars": 1500,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "christoomey/vim-tmux-navigator",
+      "name": "vim-tmux-navigator",
+      "description": "Seamless navigation between tmux panes and vim splits",
+      "category": "navigation",
+      "stars": 5200,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-pain-control",
+      "name": "tmux-pain-control",
+      "description": "Standard pane key-bindings — intuitive split and navigation",
+      "category": "navigation",
+      "stars": 800,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "schasse/tmux-jump",
+      "name": "tmux-jump",
+      "description": "Vimium/EasyMotion-like jumping for tmux — requires bash",
+      "category": "navigation",
+      "stars": 400,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "jabirali/tmux-tilish",
+      "name": "tmux-tilish",
+      "description": "i3wm-like window management keybindings for tmux",
+      "category": "navigation",
+      "stars": 500,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-yank",
+      "name": "tmux-yank",
+      "description": "Copy to system clipboard — macOS, Linux, WSL, Cygwin",
+      "category": "clipboard",
+      "stars": 2700,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-copycat",
+      "name": "tmux-copycat",
+      "description": "Regex searches in tmux + predefined searches for URLs, IPs",
+      "category": "clipboard",
+      "stars": 2200,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-open",
+      "name": "tmux-open",
+      "description": "Open highlighted selection directly from tmux copy mode",
+      "category": "clipboard",
+      "stars": 700,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "laktak/extrakto",
+      "name": "extrakto",
+      "description": "Fuzzy find + paste from tmux pane history using fzf",
+      "category": "clipboard",
+      "stars": 900,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-prefix-highlight",
+      "name": "prefix-highlight",
+      "description": "Highlights when tmux prefix key is pressed",
+      "category": "statusbar",
+      "stars": 700,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-battery",
+      "name": "tmux-battery",
+      "description": "Battery percentage and icon in tmux status bar",
+      "category": "statusbar",
+      "stars": 500,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-cpu",
+      "name": "tmux-cpu",
+      "description": "CPU and GPU usage in tmux status bar",
+      "category": "statusbar",
+      "stars": 500,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-net-speed",
+      "name": "tmux-net-speed",
+      "description": "Network download/upload speed in tmux status bar",
+      "category": "statusbar",
+      "stars": 200,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-online-status",
+      "name": "tmux-online-status",
+      "description": "Online/offline indicator for tmux status bar",
+      "category": "statusbar",
+      "stars": 200,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "olimorris/tmux-pomodoro-plus",
+      "name": "Pomodoro+",
+      "description": "Pomodoro timer in your tmux status bar",
+      "category": "statusbar",
+      "stars": 300,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-logging",
+      "name": "tmux-logging",
+      "description": "Log pane output, take screenshots, save history",
+      "category": "utility",
+      "stars": 700,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-urlview",
+      "name": "tmux-urlview",
+      "description": "Quickly open URLs from tmux pane using urlview",
+      "category": "utility",
+      "stars": 300,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "sainnhe/tmux-fzf",
+      "name": "tmux-fzf",
+      "description": "Use fzf to manage tmux sessions, windows, panes, commands",
+      "category": "utility",
+      "stars": 1200,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "wfxr/tmux-fzf-url",
+      "name": "tmux-fzf-url",
+      "description": "Open URLs from tmux pane with fzf popup",
+      "category": "utility",
+      "stars": 600,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "tmux-plugins/tmux-sidebar",
+      "name": "tmux-sidebar",
+      "description": "File tree sidebar with directory structure",
+      "category": "utility",
+      "stars": 500,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "jaclu/tmux-menus",
+      "name": "tmux-menus",
+      "description": "Popup menus to help with managing tmux",
+      "category": "utility",
+      "stars": 300,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "nhdaly/tmux-better-mouse-mode",
+      "name": "Better Mouse Mode",
+      "description": "Better mouse support — scroll, pane select, resize",
+      "category": "utility",
+      "stars": 1000,
+      "compat": ["tmux"]
+    },
+    {
+      "repo": "b0o/tmux-autoreload",
+      "name": "tmux-autoreload",
+      "description": "Automatically reload tmux config when it changes",
+      "category": "utility",
+      "stars": 400,
+      "compat": ["tmux"]
+    }
+  ]
+}
