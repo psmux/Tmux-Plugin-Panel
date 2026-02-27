@@ -321,6 +321,135 @@
       "category": "utility",
       "stars": 400,
       "compat": ["tmux"]
+    },
+
+    {
+      "repo": "marlocarlo/psmux-plugins/ppm",
+      "name": "ppm",
+      "description": "PSMux Plugin Manager — install, update, and remove psmux plugins via PowerShell",
+      "category": "essential",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-sensible",
+      "name": "psmux-sensible",
+      "description": "Universal sensible defaults for PSMux — escape-time, mouse, vi-mode, history",
+      "category": "essential",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-pain-control",
+      "name": "psmux-pain-control",
+      "description": "Vim-style pane navigation (h/j/k/l) and intuitive split bindings",
+      "category": "navigation",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-yank",
+      "name": "psmux-yank",
+      "description": "Copy to system clipboard from PSMux copy mode — Windows native",
+      "category": "clipboard",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-prefix-highlight",
+      "name": "psmux-prefix-highlight",
+      "description": "Highlights when PSMux prefix key is pressed in the status bar",
+      "category": "statusbar",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-battery",
+      "name": "psmux-battery",
+      "description": "Battery percentage and icon in PSMux status bar — PowerShell native",
+      "category": "statusbar",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-cpu",
+      "name": "psmux-cpu",
+      "description": "CPU and RAM usage in PSMux status bar — PowerShell native",
+      "category": "statusbar",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-logging",
+      "name": "psmux-logging",
+      "description": "Log pane output, take screenshots, save history — PowerShell edition",
+      "category": "utility",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-resurrect",
+      "name": "psmux-resurrect",
+      "description": "Persist and restore PSMux sessions across restarts",
+      "category": "session",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-continuum",
+      "name": "psmux-continuum",
+      "description": "Continuous auto-save and restore of PSMux environment",
+      "category": "session",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-sidebar",
+      "name": "psmux-sidebar",
+      "description": "File tree sidebar with directory structure via PowerShell",
+      "category": "utility",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-catppuccin",
+      "name": "Catppuccin (PSMux)",
+      "description": "Soothing pastel Catppuccin Mocha theme — native PSMux style format",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-dracula",
+      "name": "Dracula (PSMux)",
+      "description": "Dark Dracula theme — pure conf, no bash dependency",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-gruvbox",
+      "name": "Gruvbox (PSMux)",
+      "description": "Warm retro Gruvbox theme with powerline separators",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-nord",
+      "name": "Nord (PSMux)",
+      "description": "Arctic north-bluish Nord theme — clean and elegant",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-tokyonight",
+      "name": "Tokyo Night (PSMux)",
+      "description": "Tokyo Night color scheme — storm variant with powerline",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
     }
   ]
 }

@@ -103,6 +103,22 @@ fn extract_repo_from_url(url: &str) -> Option<String> {
     None
 }
 
+/// Read the `.tppanel` marker file to get repo info for non-git plugin dirs
+/// (e.g., monorepo plugins extracted from a sparse checkout).
+fn read_tppanel_marker(dir: &Path) -> Option<String> {
+    let marker = dir.join(".tppanel");
+    let content = fs::read_to_string(&marker).ok()?;
+    for line in content.lines() {
+        if let Some(repo) = line.strip_prefix("repo=") {
+            let repo = repo.trim();
+            if !repo.is_empty() {
+                return Some(repo.to_string());
+            }
+        }
+    }
+    None
+}
+
 // ── Scanning installed plugins ──────────────────────────────────────────
 
 pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
@@ -132,7 +148,8 @@ pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
         }
 
         let remote_url = get_remote_url(&path);
-        let repo = remote_url.as_deref().and_then(extract_repo_from_url);
+        let repo = remote_url.as_deref().and_then(extract_repo_from_url)
+            .or_else(|| read_tppanel_marker(&path));  // fallback to .tppanel marker
         let commit = get_current_commit(&path);
         let branch = get_current_branch(&path);
 
@@ -158,6 +175,21 @@ pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
 
 // ── Install ─────────────────────────────────────────────────────────────
 
+/// Check if a repo path is a monorepo plugin (3+ path segments: org/repo/subdir).
+fn is_monorepo(repo: &str) -> bool {
+    repo.split('/').count() >= 3
+}
+
+/// Extract the GitHub repo path (first 2 segments) from a monorepo path.
+fn monorepo_base(repo: &str) -> String {
+    repo.split('/').take(2).collect::<Vec<_>>().join("/")
+}
+
+/// Extract the subdirectory (3rd+ segments) from a monorepo path.
+fn monorepo_subdir(repo: &str) -> String {
+    repo.split('/').skip(2).collect::<Vec<_>>().join("/")
+}
+
 pub fn install_plugin(
     repo: &str,
     config: &mut TmuxConfig,
@@ -181,33 +213,124 @@ pub fn install_plugin(
         };
     }
 
-    let clone_url = format!("https://github.com/{}.git", repo);
-    let target_str = target_dir.display().to_string();
+    if is_monorepo(repo) {
+        // Monorepo plugin: clone base repo to temp dir, then move the subdirectory
+        let base_repo = monorepo_base(repo);
+        let subdir = monorepo_subdir(repo);
+        let clone_url = format!("https://github.com/{}.git", base_repo);
 
-    let mut args = vec!["clone"];
-    if let Some(b) = branch {
-        args.push("-b");
-        args.push(b);
-    }
-    args.extend_from_slice(&["--depth=1", &clone_url, &target_str]);
+        // Use a temp directory inside the install dir
+        let temp_dir = install_dir.join(".tppanel-temp-clone");
+        let _ = fs::remove_dir_all(&temp_dir); // clean up any previous attempt
+        let temp_str = temp_dir.display().to_string();
 
-    let (ok, output) = run_git(&args, None);
-    if !ok {
-        // Clean up partial clone
-        let _ = fs::remove_dir_all(&target_dir);
-        return OpResult {
-            success: false,
-            message: format!("Clone failed: {}", output),
-        };
+        let mut args = vec!["clone", "--depth=1", "--filter=blob:none", "--sparse"];
+        if let Some(b) = branch {
+            args.push("-b");
+            args.push(b);
+        }
+        args.extend_from_slice(&[&clone_url, &temp_str]);
+
+        let (ok, output) = run_git(&args, None);
+        if !ok {
+            let _ = fs::remove_dir_all(&temp_dir);
+            return OpResult {
+                success: false,
+                message: format!("Clone failed: {}", output),
+            };
+        }
+
+        // Set sparse-checkout to only fetch the subdirectory we need
+        let (ok, _) = run_git(&["sparse-checkout", "set", &subdir], Some(&temp_dir));
+        if !ok {
+            // Fallback: try without sparse-checkout (full clone already has it)
+        }
+
+        // Move the subdirectory to the target
+        let source_dir = temp_dir.join(&subdir);
+        if source_dir.is_dir() {
+            if let Err(e) = copy_dir_recursive(&source_dir, &target_dir) {
+                let _ = fs::remove_dir_all(&temp_dir);
+                let _ = fs::remove_dir_all(&target_dir);
+                return OpResult {
+                    success: false,
+                    message: format!("Failed to extract plugin: {}", e),
+                };
+            }
+        } else {
+            // sparse-checkout might not have worked, try full checkout
+            let _ = run_git(&["checkout"], Some(&temp_dir));
+            let source_dir = temp_dir.join(&subdir);
+            if source_dir.is_dir() {
+                if let Err(e) = copy_dir_recursive(&source_dir, &target_dir) {
+                    let _ = fs::remove_dir_all(&temp_dir);
+                    let _ = fs::remove_dir_all(&target_dir);
+                    return OpResult {
+                        success: false,
+                        message: format!("Failed to extract plugin: {}", e),
+                    };
+                }
+            } else {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return OpResult {
+                    success: false,
+                    message: format!("Subdirectory '{}' not found in repo", subdir),
+                };
+            }
+        }
+
+        // Clean up temp clone
+        let _ = fs::remove_dir_all(&temp_dir);
+    } else {
+        // Standard single-repo plugin: direct git clone
+        let clone_url = format!("https://github.com/{}.git", repo);
+        let target_str = target_dir.display().to_string();
+
+        let mut args = vec!["clone"];
+        if let Some(b) = branch {
+            args.push("-b");
+            args.push(b);
+        }
+        args.extend_from_slice(&["--depth=1", &clone_url, &target_str]);
+
+        let (ok, output) = run_git(&args, None);
+        if !ok {
+            // Clean up partial clone
+            let _ = fs::remove_dir_all(&target_dir);
+            return OpResult {
+                success: false,
+                message: format!("Clone failed: {}", output),
+            };
+        }
     }
 
     // Add to config
     let _ = config::add_plugin_to_config(config, repo, branch);
 
+    // Write marker file for plugin identification (especially for monorepo plugins)
+    let marker = target_dir.join(".tppanel");
+    let _ = fs::write(&marker, format!("repo={}\n", repo));
+
     OpResult {
         success: true,
         message: format!("Installed '{}' successfully", plugin_name),
     }
+}
+
+/// Recursively copy a directory and its contents.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 // ── Remove ──────────────────────────────────────────────────────────────
@@ -240,6 +363,63 @@ pub fn update_plugin(plugin: &InstalledPlugin) -> OpResult {
         return OpResult {
             success: false,
             message: format!("Plugin dir not found: {}", plugin.path.display()),
+        };
+    }
+
+    // Monorepo plugins (no .git dir) need to be re-fetched entirely
+    let has_git = plugin.path.join(".git").exists();
+    if !has_git {
+        if let Some(repo) = &plugin.repo {
+            if is_monorepo(repo) {
+                // Re-install: remove old dir, clone fresh from monorepo
+                let install_dir = plugin.path.parent().unwrap_or(Path::new("."));
+                let subdir = monorepo_subdir(repo);
+                let base_repo = monorepo_base(repo);
+                let clone_url = format!("https://github.com/{}.git", base_repo);
+
+                let temp_dir = install_dir.join(".tppanel-temp-clone");
+                let _ = fs::remove_dir_all(&temp_dir);
+                let temp_str = temp_dir.display().to_string();
+
+                let (ok, output) = run_git(
+                    &["clone", "--depth=1", "--filter=blob:none", "--sparse", &clone_url, &temp_str],
+                    None,
+                );
+                if !ok {
+                    let _ = fs::remove_dir_all(&temp_dir);
+                    return OpResult {
+                        success: false,
+                        message: format!("Update failed (clone): {}", output),
+                    };
+                }
+                let _ = run_git(&["sparse-checkout", "set", &subdir], Some(&temp_dir));
+
+                let source_dir = temp_dir.join(&subdir);
+                if source_dir.is_dir() {
+                    // Replace the old plugin dir
+                    let _ = fs::remove_dir_all(&plugin.path);
+                    if let Err(e) = copy_dir_recursive(&source_dir, &plugin.path) {
+                        let _ = fs::remove_dir_all(&temp_dir);
+                        return OpResult {
+                            success: false,
+                            message: format!("Update failed (copy): {}", e),
+                        };
+                    }
+                    // Re-write marker
+                    let marker = plugin.path.join(".tppanel");
+                    let _ = fs::write(&marker, format!("repo={}\n", repo));
+                }
+                let _ = fs::remove_dir_all(&temp_dir);
+
+                return OpResult {
+                    success: true,
+                    message: format!("Updated '{}' (re-fetched from monorepo)", plugin.name),
+                };
+            }
+        }
+        return OpResult {
+            success: false,
+            message: format!("Cannot update '{}': no git info and not a known monorepo plugin", plugin.name),
         };
     }
 
