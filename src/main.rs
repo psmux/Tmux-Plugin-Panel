@@ -65,6 +65,29 @@ async fn run_app(
             break;
         }
 
+        // ── Handle preview: temporarily leave TUI ──────────────
+        if let Some((repo, cfg_clone, detected)) = app.preview_pending.take() {
+            // Restore terminal for the preview subprocess
+            disable_raw_mode()?;
+            execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+            terminal.show_cursor()?;
+
+            let result = plugins::preview_plugin(&repo, &cfg_clone, &detected);
+
+            // Re-enter TUI
+            enable_raw_mode()?;
+            execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+            terminal.hide_cursor()?;
+            terminal.clear()?;
+
+            if result.success {
+                app.set_status(&result.message);
+            } else {
+                app.set_status_err(&result.message);
+            }
+            continue;
+        }
+
         // Poll events (16ms ≈ 60fps, non-blocking for smooth UI)
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
@@ -183,17 +206,49 @@ async fn handle_confirm_input(app: &mut App, code: KeyCode) {
         KeyCode::Enter => {
             let dialog = app.confirm.take().unwrap();
             if dialog.confirm_selected {
-                // Execute the confirmed action
-                let repo = dialog.repo.clone();
-                if let Some(ref mut cfg) = app.config {
-                    let result = plugins::remove_plugin(&repo, cfg);
-                    if result.success {
-                        app.set_status(&result.message);
-                        app.refresh_installed();
-                        app.refresh_themes();
-                        app.refresh_browse();
-                    } else {
-                        app.set_status_err(&result.message);
+                match dialog.action {
+                    app::ConfirmAction::RemovePlugin => {
+                        let repo = dialog.repo.clone();
+                        if let Some(ref mut cfg) = app.config {
+                            let result = plugins::remove_plugin(&repo, cfg);
+                            if result.success {
+                                app.set_status(&result.message);
+                                app.refresh_installed();
+                                app.refresh_themes();
+                                app.refresh_browse();
+                            } else {
+                                app.set_status_err(&result.message);
+                            }
+                        }
+                    }
+                    app::ConfirmAction::ResetEntireConfig => {
+                        if let Some(ref mut cfg) = app.config {
+                            match config::reset_entire_config(cfg) {
+                                Ok(()) => {
+                                    app.set_status("Config reset to defaults — all plugins removed");
+                                    app.refresh_installed();
+                                    app.refresh_themes();
+                                    app.refresh_settings();
+                                    app.refresh_browse();
+                                }
+                                Err(e) => {
+                                    app.set_status_err(&format!("Reset failed: {}", e));
+                                }
+                            }
+                        }
+                    }
+                    app::ConfirmAction::ResetAllSettings => {
+                        if let Some(ref mut cfg) = app.config {
+                            match config::reset_all_settings(cfg) {
+                                Ok(count) => {
+                                    app.set_status(&format!("Reset {} settings to defaults", count));
+                                    app.refresh_settings();
+                                }
+                                Err(e) => {
+                                    app.set_status_err(&format!("Reset failed: {}", e));
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -335,6 +390,23 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
             }
         }
 
+        // ── Reset entire config (Ctrl+D on Config tab) ──────
+        KeyCode::Char('d') if mods.contains(KeyModifiers::CONTROL) => {
+            if app.tab == Tab::Config && app.config.is_some() {
+                let type_label = app.config.as_ref().unwrap().type_label().to_string();
+                app.confirm = Some(app::ConfirmDialog {
+                    title: "Reset Entire Config".to_string(),
+                    message: format!(
+                        "DANGER: Reset your entire {} config to factory defaults?\n\nThis removes ALL settings AND all plugin lines.",
+                        type_label
+                    ),
+                    repo: String::new(),
+                    action: app::ConfirmAction::ResetEntireConfig,
+                    confirm_selected: false,
+                });
+            }
+        }
+
         // ── Remove (x/d) ───────────────────────────────────
         KeyCode::Char('x') | KeyCode::Char('d') => {
             if let Some(repo) = app.selected_repo() {
@@ -344,6 +416,7 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
                         title: "Remove Plugin".to_string(),
                         message: format!("Remove '{}' and delete its files?\n\nRepo: {}", name, repo),
                         repo,
+                        action: app::ConfirmAction::RemovePlugin,
                         confirm_selected: false,
                     });
                 }
@@ -447,6 +520,63 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
             app.toggle_compat_filter();
         }
 
+        // ── Preview plugin/theme (p) ──────────────────────
+        KeyCode::Char('p') => {
+            if matches!(app.tab, Tab::Browse | Tab::Themes | Tab::Installed) {
+                if let Some(repo) = app.selected_repo() {
+                    if let Some(ref cfg) = app.config {
+                        let cfg_clone = cfg.clone();
+                        let detected = app.detected_muxes.clone();
+                        app.set_status(&format!("Launching preview of {}...", repo));
+                        // We need to temporarily leave the TUI for the preview
+                        app.preview_pending = Some((repo, cfg_clone, detected));
+                    } else {
+                        app.set_status_err("No config file — press 'c' to create one first");
+                    }
+                }
+            }
+        }
+
+        // ── Reset single setting (Backspace on Config tab) ──
+        KeyCode::Backspace => {
+            if app.tab == Tab::Config {
+                let filtered = app.filtered_settings();
+                let sel = app.settings_selected;
+                if sel < filtered.len() {
+                    let setting = filtered[sel].clone();
+                    if !setting.is_default() {
+                        if let Some(ref mut cfg) = app.config {
+                            match config::reset_setting(cfg, &setting.key) {
+                                Ok(()) => {
+                                    app.set_status(&format!("{} → reset to default ({})", setting.label, setting.default));
+                                    app.refresh_settings();
+                                    app.settings_selected = sel;
+                                }
+                                Err(e) => {
+                                    app.set_status_err(&format!("Reset failed: {}", e));
+                                }
+                            }
+                        }
+                    } else {
+                        app.set_status(&format!("{} is already at default", setting.label));
+                    }
+                }
+            }
+        }
+
+        // ── Reset all settings (D on Config tab) ────────────
+        KeyCode::Char('D') => {
+            if app.tab == Tab::Config {
+                app.confirm = Some(app::ConfirmDialog {
+                    title: "Reset All Settings".to_string(),
+                    message: "Reset ALL settings to their defaults?\n\nPlugin lines will be preserved.".to_string(),
+                    repo: String::new(),
+                    action: app::ConfirmAction::ResetAllSettings,
+                    confirm_selected: false,
+                });
+            }
+        }
+
         // ── Detail readme scroll ────────────────────────────
         KeyCode::Char('J') => {
             app.detail_scroll_offset = app.detail_scroll_offset.saturating_add(3);
@@ -458,7 +588,7 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         // ── Help ────────────────────────────────────────────
         KeyCode::Char('?') => {
             app.set_status(
-                "q:quit Tab:sw ↑↓jk:nav Enter:inst x:rm u:upd /:srch r:rescan R:reload c:create f:filter",
+                "q:quit Tab:sw ↑↓jk:nav Enter:inst x:rm u:upd p:preview /:srch Bksp:resetSetting D:resetAll Ctrl+D:resetConfig R:reload",
             );
         }
 

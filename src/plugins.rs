@@ -103,22 +103,6 @@ fn extract_repo_from_url(url: &str) -> Option<String> {
     None
 }
 
-/// Read the `.tppanel` marker file to get repo info for non-git plugin dirs
-/// (e.g., monorepo plugins extracted from a sparse checkout).
-fn read_tppanel_marker(dir: &Path) -> Option<String> {
-    let marker = dir.join(".tppanel");
-    let content = fs::read_to_string(&marker).ok()?;
-    for line in content.lines() {
-        if let Some(repo) = line.strip_prefix("repo=") {
-            let repo = repo.trim();
-            if !repo.is_empty() {
-                return Some(repo.to_string());
-            }
-        }
-    }
-    None
-}
-
 // ── Scanning installed plugins ──────────────────────────────────────────
 
 pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
@@ -148,8 +132,7 @@ pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
         }
 
         let remote_url = get_remote_url(&path);
-        let repo = remote_url.as_deref().and_then(extract_repo_from_url)
-            .or_else(|| read_tppanel_marker(&path));  // fallback to .tppanel marker
+        let repo = remote_url.as_deref().and_then(extract_repo_from_url);
         let commit = get_current_commit(&path);
         let branch = get_current_branch(&path);
 
@@ -175,21 +158,6 @@ pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
 
 // ── Install ─────────────────────────────────────────────────────────────
 
-/// Check if a repo path is a monorepo plugin (3+ path segments: org/repo/subdir).
-fn is_monorepo(repo: &str) -> bool {
-    repo.split('/').count() >= 3
-}
-
-/// Extract the GitHub repo path (first 2 segments) from a monorepo path.
-fn monorepo_base(repo: &str) -> String {
-    repo.split('/').take(2).collect::<Vec<_>>().join("/")
-}
-
-/// Extract the subdirectory (3rd+ segments) from a monorepo path.
-fn monorepo_subdir(repo: &str) -> String {
-    repo.split('/').skip(2).collect::<Vec<_>>().join("/")
-}
-
 pub fn install_plugin(
     repo: &str,
     config: &mut TmuxConfig,
@@ -213,124 +181,33 @@ pub fn install_plugin(
         };
     }
 
-    if is_monorepo(repo) {
-        // Monorepo plugin: clone base repo to temp dir, then move the subdirectory
-        let base_repo = monorepo_base(repo);
-        let subdir = monorepo_subdir(repo);
-        let clone_url = format!("https://github.com/{}.git", base_repo);
+    let clone_url = format!("https://github.com/{}.git", repo);
+    let target_str = target_dir.display().to_string();
 
-        // Use a temp directory inside the install dir
-        let temp_dir = install_dir.join(".tppanel-temp-clone");
-        let _ = fs::remove_dir_all(&temp_dir); // clean up any previous attempt
-        let temp_str = temp_dir.display().to_string();
+    let mut args = vec!["clone"];
+    if let Some(b) = branch {
+        args.push("-b");
+        args.push(b);
+    }
+    args.extend_from_slice(&["--depth=1", &clone_url, &target_str]);
 
-        let mut args = vec!["clone", "--depth=1", "--filter=blob:none", "--sparse"];
-        if let Some(b) = branch {
-            args.push("-b");
-            args.push(b);
-        }
-        args.extend_from_slice(&[&clone_url, &temp_str]);
-
-        let (ok, output) = run_git(&args, None);
-        if !ok {
-            let _ = fs::remove_dir_all(&temp_dir);
-            return OpResult {
-                success: false,
-                message: format!("Clone failed: {}", output),
-            };
-        }
-
-        // Set sparse-checkout to only fetch the subdirectory we need
-        let (ok, _) = run_git(&["sparse-checkout", "set", &subdir], Some(&temp_dir));
-        if !ok {
-            // Fallback: try without sparse-checkout (full clone already has it)
-        }
-
-        // Move the subdirectory to the target
-        let source_dir = temp_dir.join(&subdir);
-        if source_dir.is_dir() {
-            if let Err(e) = copy_dir_recursive(&source_dir, &target_dir) {
-                let _ = fs::remove_dir_all(&temp_dir);
-                let _ = fs::remove_dir_all(&target_dir);
-                return OpResult {
-                    success: false,
-                    message: format!("Failed to extract plugin: {}", e),
-                };
-            }
-        } else {
-            // sparse-checkout might not have worked, try full checkout
-            let _ = run_git(&["checkout"], Some(&temp_dir));
-            let source_dir = temp_dir.join(&subdir);
-            if source_dir.is_dir() {
-                if let Err(e) = copy_dir_recursive(&source_dir, &target_dir) {
-                    let _ = fs::remove_dir_all(&temp_dir);
-                    let _ = fs::remove_dir_all(&target_dir);
-                    return OpResult {
-                        success: false,
-                        message: format!("Failed to extract plugin: {}", e),
-                    };
-                }
-            } else {
-                let _ = fs::remove_dir_all(&temp_dir);
-                return OpResult {
-                    success: false,
-                    message: format!("Subdirectory '{}' not found in repo", subdir),
-                };
-            }
-        }
-
-        // Clean up temp clone
-        let _ = fs::remove_dir_all(&temp_dir);
-    } else {
-        // Standard single-repo plugin: direct git clone
-        let clone_url = format!("https://github.com/{}.git", repo);
-        let target_str = target_dir.display().to_string();
-
-        let mut args = vec!["clone"];
-        if let Some(b) = branch {
-            args.push("-b");
-            args.push(b);
-        }
-        args.extend_from_slice(&["--depth=1", &clone_url, &target_str]);
-
-        let (ok, output) = run_git(&args, None);
-        if !ok {
-            // Clean up partial clone
-            let _ = fs::remove_dir_all(&target_dir);
-            return OpResult {
-                success: false,
-                message: format!("Clone failed: {}", output),
-            };
-        }
+    let (ok, output) = run_git(&args, None);
+    if !ok {
+        // Clean up partial clone
+        let _ = fs::remove_dir_all(&target_dir);
+        return OpResult {
+            success: false,
+            message: format!("Clone failed: {}", output),
+        };
     }
 
     // Add to config
     let _ = config::add_plugin_to_config(config, repo, branch);
 
-    // Write marker file for plugin identification (especially for monorepo plugins)
-    let marker = target_dir.join(".tppanel");
-    let _ = fs::write(&marker, format!("repo={}\n", repo));
-
     OpResult {
         success: true,
         message: format!("Installed '{}' successfully", plugin_name),
     }
-}
-
-/// Recursively copy a directory and its contents.
-fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    Ok(())
 }
 
 // ── Remove ──────────────────────────────────────────────────────────────
@@ -363,63 +240,6 @@ pub fn update_plugin(plugin: &InstalledPlugin) -> OpResult {
         return OpResult {
             success: false,
             message: format!("Plugin dir not found: {}", plugin.path.display()),
-        };
-    }
-
-    // Monorepo plugins (no .git dir) need to be re-fetched entirely
-    let has_git = plugin.path.join(".git").exists();
-    if !has_git {
-        if let Some(repo) = &plugin.repo {
-            if is_monorepo(repo) {
-                // Re-install: remove old dir, clone fresh from monorepo
-                let install_dir = plugin.path.parent().unwrap_or(Path::new("."));
-                let subdir = monorepo_subdir(repo);
-                let base_repo = monorepo_base(repo);
-                let clone_url = format!("https://github.com/{}.git", base_repo);
-
-                let temp_dir = install_dir.join(".tppanel-temp-clone");
-                let _ = fs::remove_dir_all(&temp_dir);
-                let temp_str = temp_dir.display().to_string();
-
-                let (ok, output) = run_git(
-                    &["clone", "--depth=1", "--filter=blob:none", "--sparse", &clone_url, &temp_str],
-                    None,
-                );
-                if !ok {
-                    let _ = fs::remove_dir_all(&temp_dir);
-                    return OpResult {
-                        success: false,
-                        message: format!("Update failed (clone): {}", output),
-                    };
-                }
-                let _ = run_git(&["sparse-checkout", "set", &subdir], Some(&temp_dir));
-
-                let source_dir = temp_dir.join(&subdir);
-                if source_dir.is_dir() {
-                    // Replace the old plugin dir
-                    let _ = fs::remove_dir_all(&plugin.path);
-                    if let Err(e) = copy_dir_recursive(&source_dir, &plugin.path) {
-                        let _ = fs::remove_dir_all(&temp_dir);
-                        return OpResult {
-                            success: false,
-                            message: format!("Update failed (copy): {}", e),
-                        };
-                    }
-                    // Re-write marker
-                    let marker = plugin.path.join(".tppanel");
-                    let _ = fs::write(&marker, format!("repo={}\n", repo));
-                }
-                let _ = fs::remove_dir_all(&temp_dir);
-
-                return OpResult {
-                    success: true,
-                    message: format!("Updated '{}' (re-fetched from monorepo)", plugin.name),
-                };
-            }
-        }
-        return OpResult {
-            success: false,
-            message: format!("Cannot update '{}': no git info and not a known monorepo plugin", plugin.name),
         };
     }
 
@@ -524,6 +344,258 @@ pub fn reload_config(config: &TmuxConfig, detected: &[crate::detect::DetectedMux
             ),
         },
     }
+}
+
+/// Launch a temporary preview session of tmux/psmux with only the specified
+/// plugin or theme installed. Creates a temp config, clones the plugin to a
+/// temp dir, and starts a new mux session. Returns when the session ends.
+pub fn preview_plugin(
+    repo: &str,
+    config: &TmuxConfig,
+    detected: &[crate::detect::DetectedMux],
+) -> OpResult {
+    use std::env;
+
+    let kind = match config.config_type.as_str() {
+        "psmux" => crate::detect::MuxKind::PSMux,
+        _ => crate::detect::MuxKind::Tmux,
+    };
+
+    // Determine the binary to use
+    let binary = {
+        let mut best = match kind {
+            crate::detect::MuxKind::PSMux => "psmux".to_string(),
+            crate::detect::MuxKind::Tmux => "tmux".to_string(),
+        };
+        for name in &["psmux", "pmux", "tmux"] {
+            if detected.iter().any(|d| d.binary == *name) {
+                best = name.to_string();
+                break;
+            }
+        }
+        best
+    };
+
+    let plugin_name = repo.split('/').last().unwrap_or(repo);
+
+    // Create temp directory for preview
+    let tmp_base = env::temp_dir().join("tppanel-preview");
+    let _ = fs::create_dir_all(&tmp_base);
+    let preview_dir = tmp_base.join(format!("preview-{}", plugin_name));
+
+    // Clean up any previous preview for this plugin
+    if preview_dir.exists() {
+        let _ = fs::remove_dir_all(&preview_dir);
+    }
+    let _ = fs::create_dir_all(&preview_dir);
+
+    let plugins_dir = preview_dir.join("plugins");
+    let _ = fs::create_dir_all(&plugins_dir);
+
+    let target_dir = plugins_dir.join(plugin_name);
+
+    // ── Try to reuse the already-installed copy first ──────────────
+    let already_installed_dir = config.plugin_install_dir.join(plugin_name);
+    let have_local_copy = if already_installed_dir.is_dir() {
+        // Copy the installed plugin to our preview dir
+        match copy_dir_recursive(&already_installed_dir, &target_dir) {
+            Ok(()) => true,
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
+
+    // ── If no local copy, clone from GitHub ───────────────────────
+    if !have_local_copy {
+        let clone_url = format!("https://github.com/{}.git", repo);
+        let target_str = target_dir.display().to_string();
+
+        let (ok, output) = run_git(&["clone", "--depth=1", &clone_url, &target_str], None);
+        if !ok {
+            // Try SSH URL as fallback
+            let ssh_url = format!("git@github.com:{}.git", repo);
+            let (ok2, output2) = run_git(&["clone", "--depth=1", &ssh_url, &target_str], None);
+            if !ok2 {
+                let _ = fs::remove_dir_all(&preview_dir);
+                return OpResult {
+                    success: false,
+                    message: format!(
+                        "Preview clone failed (plugin not installed locally either).\n\
+                         HTTPS: {}\nSSH: {}\n\
+                         Tip: Install the plugin first (Enter), then preview (p).",
+                        output, output2
+                    ),
+                };
+            }
+        }
+    }
+
+    // Build a minimal temp config
+    let conf_path = preview_dir.join(format!("{}.conf", config.config_type));
+    let mut conf_lines = Vec::new();
+    conf_lines.push(format!("# tppanel preview — {} (temporary)", plugin_name));
+    conf_lines.push(String::new());
+    conf_lines.push("set -g mouse on".to_string());
+    conf_lines.push("set -g base-index 1".to_string());
+    conf_lines.push(String::new());
+
+    // Add plugin declaration
+    conf_lines.push(format!("set -g @plugin '{}'", repo));
+
+    // Add run-shell to source the plugin
+    let entry_tmux = target_dir.join(format!("{}.tmux", plugin_name));
+    if entry_tmux.exists() {
+        conf_lines.push(format!("run-shell '{}'", entry_tmux.display()));
+    } else {
+        // Try to find any .tmux file in the plugin root
+        let mut found_entry = false;
+        if let Ok(entries) = fs::read_dir(&target_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().map(|e| e == "tmux").unwrap_or(false) && p.is_file() {
+                    conf_lines.push(format!("run-shell '{}'", p.display()));
+                    found_entry = true;
+                    break;
+                }
+            }
+        }
+        // Some plugins use a script inside a scripts/ or plugin/ subdir
+        if !found_entry {
+            for subdir in &["scripts", "plugin", "src"] {
+                let sub = target_dir.join(subdir);
+                if sub.is_dir() {
+                    if let Ok(entries) = fs::read_dir(&sub) {
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            if p.extension().map(|e| e == "tmux").unwrap_or(false) && p.is_file() {
+                                conf_lines.push(format!("run-shell '{}'", p.display()));
+                                found_entry = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if found_entry { break; }
+            }
+        }
+    }
+
+    conf_lines.push(String::new());
+    conf_lines.push("# ── Preview status message ──".to_string());
+    conf_lines.push(format!(
+        "set -g status-right '#[fg=yellow,bold] PREVIEW: {} #[default]'",
+        plugin_name
+    ));
+
+    let conf_content = conf_lines.join("\n") + "\n";
+    if let Err(e) = fs::write(&conf_path, &conf_content) {
+        let _ = fs::remove_dir_all(&preview_dir);
+        return OpResult {
+            success: false,
+            message: format!("Failed to write preview config: {}", e),
+        };
+    }
+
+    let conf_path_str = conf_path.display().to_string();
+
+    // Launch the multiplexer with the temp config in a fully ISOLATED server.
+    //
+    // Key points:
+    //   -f <config>    MUST come BEFORE the subcommand (it's a server flag)
+    //   -L <socket>    creates a separate server so the preview doesn't reuse
+    //                  the user's running server (which already loaded their theme)
+    //
+    // Syntax: <binary> -f <config> -L tppanel-preview new-session -s preview
+    let result = Command::new(&binary)
+        .args([
+            "-f", &conf_path_str,
+            "-L", "tppanel-preview",
+            "new-session", "-s", "preview",
+        ])
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status();
+
+    let launch_ok = match &result {
+        Ok(status) => status.success(),
+        Err(_) => false,
+    };
+
+    if !launch_ok {
+        // Fallback for muxes that may not support -f:
+        // Start an isolated server, source the config, then attach.
+        let _ = Command::new(&binary)
+            .args(["-L", "tppanel-preview", "start-server"])
+            .output();
+        let _ = Command::new(&binary)
+            .args(["-L", "tppanel-preview", "source-file", &conf_path_str])
+            .output();
+        let r2 = Command::new(&binary)
+            .args(["-L", "tppanel-preview", "new-session", "-s", "preview"])
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status();
+
+        match r2 {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                // Kill the isolated server before bailing
+                let _ = Command::new(&binary)
+                    .args(["-L", "tppanel-preview", "kill-server"])
+                    .output();
+                let _ = fs::remove_dir_all(&preview_dir);
+                return OpResult {
+                    success: false,
+                    message: format!(
+                        "Preview session failed (exit {}). Binary: '{}'. Config: '{}'",
+                        status, binary, conf_path_str
+                    ),
+                };
+            }
+            Err(e) => {
+                let _ = fs::remove_dir_all(&preview_dir);
+                return OpResult {
+                    success: false,
+                    message: format!(
+                        "Could not launch '{}': {}. Is {} installed and in PATH?",
+                        binary, e, binary
+                    ),
+                };
+            }
+        }
+    }
+
+    // Kill the isolated preview server (it may linger after detach)
+    let _ = Command::new(&binary)
+        .args(["-L", "tppanel-preview", "kill-server"])
+        .output();
+
+    // Clean up temp files after session ends
+    let _ = fs::remove_dir_all(&preview_dir);
+
+    OpResult {
+        success: true,
+        message: format!("Preview of '{}' finished", plugin_name),
+    }
+}
+
+/// Recursively copy a directory.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 pub fn find_orphaned_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {

@@ -63,12 +63,21 @@ pub enum Focus {
     Search,
 }
 
+/// What action a confirmation dialog is for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfirmAction {
+    RemovePlugin,
+    ResetEntireConfig,
+    ResetAllSettings,
+}
+
 /// Active confirmation dialog.
 #[derive(Debug, Clone)]
 pub struct ConfirmDialog {
     pub title: String,
     pub message: String,
     pub repo: String,
+    pub action: ConfirmAction,
     pub confirm_selected: bool, // false = Cancel highlighted, true = Confirm
 }
 
@@ -134,6 +143,9 @@ pub struct App {
     pub confirm: Option<ConfirmDialog>,
     pub status: StatusMessage,
     pub installed_repos: std::collections::HashSet<String>,
+
+    // ── Preview pending (repo, config_clone, detected_muxes) ────
+    pub preview_pending: Option<(String, crate::config::TmuxConfig, Vec<crate::detect::DetectedMux>)>,
 }
 
 impl App {
@@ -198,6 +210,7 @@ impl App {
                 is_error: false,
             },
             installed_repos: std::collections::HashSet::new(),
+            preview_pending: None,
         }
     }
 

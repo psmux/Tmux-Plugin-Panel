@@ -723,7 +723,7 @@ fn draw_settings_list(f: &mut Frame, area: Rect, app: &App, cfg: &TmuxConfig) {
             Span::styled(config_count_label, Style::default().fg(TEXT_DIM)),
         ]),
         Line::from(Span::styled(
-            "  ←/→ categories  ↑/↓ navigate  Enter toggle/edit  Esc cancel",
+            "  ←/→ categories  ↑/↓ navigate  Enter toggle/edit  Bksp reset  D reset-all  Ctrl+D factory-reset",
             Style::default().fg(TEXT_DARK),
         )),
     ];
@@ -1028,6 +1028,8 @@ fn draw_footer(f: &mut Frame, area: Rect, _app: &App) {
         Span::styled(" Nav ", label_style),
         Span::styled("Enter", key_style),
         Span::styled(" Install ", label_style),
+        Span::styled("p", key_style),
+        Span::styled(" Preview ", label_style),
         Span::styled("x", key_style),
         Span::styled(" Rm ", label_style),
         Span::styled("u", key_style),
@@ -1036,10 +1038,8 @@ fn draw_footer(f: &mut Frame, area: Rect, _app: &App) {
         Span::styled(" Search ", label_style),
         Span::styled("R", key_style),
         Span::styled(" Reload ", label_style),
-        Span::styled("c", key_style),
-        Span::styled(" Create/Cycle ", label_style),
-        Span::styled("f", key_style),
-        Span::styled(" Filter ", label_style),
+        Span::styled("Bksp", key_style),
+        Span::styled(" Reset ", label_style),
         Span::styled("?", key_style),
         Span::styled(" Help ", label_style),
     ]);
