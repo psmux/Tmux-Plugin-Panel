@@ -373,12 +373,15 @@ pub fn search_registry(
         .collect()
 }
 
-/// Find a single plugin in the registry by repo path.
+/// Find a single plugin in the registry by repo path or short name.
 pub fn get_registry_plugin<'a>(
     registry: &'a [RegistryPlugin],
     repo: &str,
 ) -> Option<&'a RegistryPlugin> {
+    // Exact match first
     registry.iter().find(|p| p.repo == repo)
+        // Fall back to short-name match
+        .or_else(|| registry.iter().find(|p| p.repo.split('/').last() == Some(repo)))
 }
 
 // ── Cached embedded registry (for modules that need lookup without App) ──

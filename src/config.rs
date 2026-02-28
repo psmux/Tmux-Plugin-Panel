@@ -1101,27 +1101,42 @@ pub fn add_plugin_to_config(
         let insert_at = find_insert_point(config);
         config.lines.insert(insert_at, new_line.clone());
     } else {
-        // Non-TPM (psmux or standalone): use managed section with run-shell
-        let run_shell_line = format!(
-            "run-shell '{}/{}/{}.tmux'",
-            config.plugin_install_dir.display(),
-            plugin_name,
-            plugin_name,
-        );
+        // Non-TPM (psmux or standalone): use managed section with
+        // source-file or run-shell depending on what the plugin provides.
+        let plugin_dir = config.plugin_install_dir.join(plugin_name);
+        let plugin_conf = plugin_dir.join("plugin.conf");
+        let entry_ps1 = plugin_dir.join(format!("{}.ps1", plugin_name));
+
+        let activation_line = if config.config_type == "psmux" && plugin_conf.exists() {
+            // PSMux themes/plugins with plugin.conf — most reliable:
+            // source-file applies set-g directives during config load.
+            format!("source-file '{}'", plugin_conf.display())
+        } else if config.config_type == "psmux" && entry_ps1.exists() {
+            // PSMux plugin with .ps1 entry — run it
+            format!("run-shell '{}'", entry_ps1.display())
+        } else {
+            // Default (tmux): run-shell with .tmux entry script
+            format!(
+                "run-shell '{}/{}/{}.tmux'",
+                config.plugin_install_dir.display(),
+                plugin_name,
+                plugin_name,
+            )
+        };
 
         if has_managed_section(config) {
             // Insert before the "End plugins" marker
             let end_pos = config.lines.iter()
                 .position(|l| l.contains("# ── End plugins"))
                 .unwrap_or(config.lines.len());
-            config.lines.insert(end_pos, run_shell_line);
+            config.lines.insert(end_pos, activation_line);
             config.lines.insert(end_pos, new_line.clone());
         } else {
             // Create managed section at end of file
             config.lines.push(String::new());
             config.lines.push("# ── Plugins (managed by tppanel) ──────────────────────".to_string());
             config.lines.push(new_line.clone());
-            config.lines.push(run_shell_line);
+            config.lines.push(activation_line);
             config.lines.push("# ── End plugins ──────────────────────────────────────".to_string());
         }
     }
@@ -1161,6 +1176,10 @@ pub fn remove_plugin_from_config(config: &mut TmuxConfig, repo: &str) -> Result<
         }
         // run-shell line for this plugin
         if line.contains("run-shell") && line.contains(plugin_name) {
+            indices_to_remove.push(i);
+        }
+        // source-file line for this plugin (psmux themes use source-file 'plugin.conf')
+        if line.contains("source-file") && line.contains(plugin_name) {
             indices_to_remove.push(i);
         }
     }

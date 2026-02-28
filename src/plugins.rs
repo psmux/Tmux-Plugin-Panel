@@ -281,6 +281,14 @@ pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
             .map(|r| config_repos.contains(r))
             .unwrap_or(false);
 
+        // Also check if this plugin is referenced via source-file or run-shell
+        // in the config (even without an @plugin line).
+        let in_config = in_config || config.lines.iter().any(|l| {
+            let lt = l.trim();
+            (lt.starts_with("source-file") || lt.starts_with("run-shell") || lt.starts_with("run "))
+                && lt.contains(&name)
+        });
+
         plugins.push(InstalledPlugin {
             name,
             path,
@@ -1003,7 +1011,8 @@ pub fn activate_theme(
 ) -> OpResult {
     let registry = crate::registry::embedded_registry();
 
-    // Remove other theme plugins from the config (but don't uninstall their files)
+    // Remove other theme plugins from the config AND their source-file lines
+    // (but don't uninstall their files from disk — user can switch back)
     let theme_repos: Vec<String> = registry.iter()
         .filter(|rp| rp.category == crate::registry::Category::Theme && rp.repo != repo)
         .map(|rp| rp.repo.clone())
@@ -1011,8 +1020,20 @@ pub fn activate_theme(
     for tr in &theme_repos {
         let _ = config::remove_plugin_from_config(config, tr);
     }
+    // Also remove any stray source-file lines left from old themes
+    for tr in &theme_repos {
+        let old_name = tr.split('/').last().unwrap_or(tr);
+        let old_dir = config.plugin_install_dir.join(old_name);
+        let old_conf_display = old_dir.join("plugin.conf").display().to_string();
+        config.lines.retain(|l| {
+            let lt = l.trim();
+            !(lt.contains("source-file") && lt.contains(&old_conf_display))
+        });
+    }
 
-    // Install the theme if not already on disk
+    // Install the theme if not already on disk.
+    // add_plugin_to_config (called inside install_plugin) now generates the
+    // correct `source-file 'plugin.conf'` for psmux themes automatically.
     let plugin_name = repo.split('/').last().unwrap_or(repo);
     let target_dir = config.plugin_install_dir.join(plugin_name);
     if !target_dir.exists() || !dir_has_content(&target_dir) {
@@ -1021,40 +1042,18 @@ pub fn activate_theme(
             return result;
         }
     } else {
-        // Already on disk, just ensure it's in the config
+        // Already on disk — remove any existing entry for this plugin
+        // (to ensure a clean re-add with the correct source-file line)
+        let _ = config::remove_plugin_from_config(config, repo);
+        // Re-add with correct activation line (source-file for psmux themes)
         let _ = config::add_plugin_to_config(config, repo, None);
     }
 
-    // Also source-file the theme's plugin.conf directly in the config
-    // so it takes effect without needing run-shell
-    let plugin_conf = target_dir.join("plugin.conf");
-    if plugin_conf.exists() {
-        let source_line = format!("source-file '{}'", plugin_conf.display());
-        // Check if this source-file line already exists
-        let already_sourced = config.lines.iter().any(|l| {
-            let lt = l.trim();
-            lt == source_line || lt.contains(&plugin_conf.display().to_string())
-        });
-        if !already_sourced {
-            // Remove old theme source-file lines
-            for tr in &theme_repos {
-                let old_name = tr.split('/').last().unwrap_or(tr);
-                let old_dir = config.plugin_install_dir.join(old_name);
-                let old_conf = old_dir.join("plugin.conf");
-                config.lines.retain(|l| {
-                    let lt = l.trim();
-                    !lt.contains(&old_conf.display().to_string())
-                });
-            }
-            // Add new theme source line
-            config.lines.push(source_line);
-            // Write config back
-            let content = config.lines.join("\n") + "\n";
-            let _ = std::fs::write(&config.path, &content);
-        }
-    }
+    // Write config to ensure all changes are persisted
+    let content = config.lines.join("\n") + "\n";
+    let _ = std::fs::write(&config.path, &content);
 
-    // Reload config
+    // Reload config in the running multiplexer (if any)
     let reload = reload_config(config, detected);
 
     OpResult {

@@ -210,6 +210,9 @@ pub struct App {
     // ── Preview pending (repo, config_clone, detected_muxes) ────
     pub preview_pending: Option<(String, crate::config::TmuxConfig, Vec<crate::detect::DetectedMux>)>,
 
+    // ── Orphan tracking (display only — user cleans manually) ────
+    pub _orphan_count: usize,
+
     // ── Layout regions for mouse hit-testing ────────
     pub layout: LayoutRegions,
 }
@@ -276,6 +279,7 @@ impl App {
             },
             installed_repos: std::collections::HashSet::new(),
             preview_pending: None,
+            _orphan_count: 0,
             layout: LayoutRegions::default(),
         }
     }
@@ -291,11 +295,13 @@ impl App {
         self.active_config_index = 0;
         self.config = self.all_configs.first().cloned();
 
-        // Auto-clean orphaned plugins (on disk but not in config)
-        if let Some(ref mut cfg) = self.config {
+        // Check for orphaned plugins (on disk but not in config).
+        // Don't auto-delete — just report count so the user can decide.
+        if let Some(ref cfg) = self.config {
             let orphans = crate::plugins::find_orphaned_plugins(cfg);
             if !orphans.is_empty() {
-                let _ = crate::plugins::clean_orphaned_plugins(cfg);
+                // Store count for status display; user can press 'C' in Installed tab to clean
+                self._orphan_count = orphans.len();
             }
         }
 
@@ -375,16 +381,29 @@ impl App {
         }
     }
 
-    /// Detect the currently active theme by checking installed theme plugins
-    /// that are also declared in the config file.
+    /// Detect the currently active theme by checking:
+    /// 1. Config @plugin entries that map to theme-category registry entries
+    /// 2. Config source-file lines that reference a theme plugin's plugin.conf
     fn detect_active_theme(&self) -> Option<String> {
         let registry = crate::registry::embedded_registry();
         if let Some(cfg) = &self.config {
+            // Check @plugin declarations first
             for plugin_entry in &cfg.plugins {
-                // Check if this config plugin is a theme
                 if let Some(rp) = registry.iter().find(|rp| rp.repo == plugin_entry.repo) {
                     if rp.category == Category::Theme {
                         return Some(rp.repo.clone());
+                    }
+                }
+            }
+            // Check source-file lines that reference theme plugin.conf
+            for line in &cfg.lines {
+                let lt = line.trim();
+                if lt.starts_with("source-file") {
+                    for rp in registry.iter().filter(|rp| rp.category == Category::Theme) {
+                        let theme_name = rp.repo.split('/').last().unwrap_or(&rp.repo);
+                        if lt.contains(theme_name) {
+                            return Some(rp.repo.clone());
+                        }
                     }
                 }
             }
@@ -393,10 +412,12 @@ impl App {
     }
 
     /// Check if a repo is a theme plugin.
+    /// Matches both full repo paths ("psmux-plugins/psmux-theme-catppuccin")
+    /// and short names ("psmux-theme-catppuccin").
     pub fn is_theme_plugin(&self, repo: &str) -> bool {
         let registry = crate::registry::embedded_registry();
         registry.iter()
-            .find(|rp| rp.repo == repo)
+            .find(|rp| rp.repo == repo || rp.repo.split('/').last() == Some(repo))
             .map(|rp| rp.category == Category::Theme)
             .unwrap_or(false)
     }
