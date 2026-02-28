@@ -30,9 +30,13 @@ impl ThemeInfo {
 }
 
 /// Get all themes with their install status.
-pub fn get_theme_status(config: &TmuxConfig, registry: &[RegistryPlugin]) -> Vec<ThemeInfo> {
+/// Accepts a pre-scanned installed plugin list to avoid redundant scanning.
+pub fn get_theme_status_with(
+    config: &TmuxConfig,
+    registry: &[RegistryPlugin],
+    installed: &[plugins::InstalledPlugin],
+) -> Vec<ThemeInfo> {
     let themes = registry::search_registry(registry, "", Some(Category::Theme), None);
-    let installed = plugins::scan_installed_plugins(config);
     let installed_repos: std::collections::HashSet<&str> = installed
         .iter()
         .filter_map(|p| p.repo.as_deref())

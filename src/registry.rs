@@ -1,21 +1,12 @@
-/// Dynamic plugin registry — fetched from GitHub, cached locally, with embedded fallback.
+/// Plugin registry — bundled with the binary from the repo-local `registry.json`.
 ///
 /// Each plugin is tagged with platform compatibility (tmux / psmux / both).
-/// On startup the registry is loaded from:
-///   1. Remote URL (GitHub raw JSON)  →  cached locally
-///   2. Local cache (~/.config/tppanel/registry_cache.json)
-///   3. Embedded fallback compiled into the binary
+/// The registry is compiled into the binary via `include_str!` so there is
+/// zero network overhead at startup.  Remote fetching may be added later.
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
-/// Default URL to fetch the curated registry JSON.
-/// Point this at your own hosted copy to customise the plugin list.
-const REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/tppanel/registry/main/plugins.json";
-
-/// Embedded fallback compiled from the repo-local registry.json.
+/// Embedded registry compiled from the repo-local registry.json.
 const EMBEDDED_REGISTRY: &str = include_str!("../registry.json");
 
 // ── Compat enum ─────────────────────────────────────────────────────────
@@ -134,18 +125,6 @@ struct RegistryFile {
     plugins: Vec<RegistryPlugin>,
 }
 
-// ── Cache paths ─────────────────────────────────────────────────────────
-
-fn cache_dir() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("tppanel")
-}
-
-fn cache_path() -> PathBuf {
-    cache_dir().join("registry_cache.json")
-}
-
 // ── Loading functions ───────────────────────────────────────────────────
 
 /// Load the embedded (compiled-in) registry — always succeeds.
@@ -155,53 +134,8 @@ pub fn load_embedded() -> Vec<RegistryPlugin> {
         .unwrap_or_default()
 }
 
-/// Load from local cache file, if it exists and parses.
-pub fn load_cache() -> Option<Vec<RegistryPlugin>> {
-    let path = cache_path();
-    let data = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str::<RegistryFile>(&data)
-        .ok()
-        .map(|r| r.plugins)
-}
-
-/// Save the plugin list to the local cache.
-pub fn save_cache(plugins: &[RegistryPlugin]) {
-    let reg = RegistryFile {
-        version: 2,
-        updated: String::new(),
-        plugins: plugins.to_vec(),
-    };
-    if let Ok(data) = serde_json::to_string_pretty(&reg) {
-        let dir = cache_dir();
-        let _ = std::fs::create_dir_all(&dir);
-        let _ = std::fs::write(cache_path(), data);
-    }
-}
-
-/// Fetch the registry from the remote GitHub URL.
-pub async fn fetch_remote() -> Result<Vec<RegistryPlugin>> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent("tppanel/0.1")
-        .build()?;
-    let resp = client.get(REGISTRY_URL).send().await?;
-    let body = resp.text().await?;
-    let reg: RegistryFile = serde_json::from_str(&body)?;
-    Ok(reg.plugins)
-}
-
-/// Load registry: try remote → cache → embedded fallback.
-pub async fn load_registry() -> Vec<RegistryPlugin> {
-    // 1. Try remote
-    if let Ok(plugins) = fetch_remote().await {
-        save_cache(&plugins);
-        return plugins;
-    }
-    // 2. Try local cache
-    if let Some(plugins) = load_cache() {
-        return plugins;
-    }
-    // 3. Embedded fallback
+/// Load the plugin registry (currently embedded-only; remote fetch may be added later).
+pub fn load_registry() -> Vec<RegistryPlugin> {
     load_embedded()
 }
 

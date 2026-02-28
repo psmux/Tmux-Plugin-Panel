@@ -133,8 +133,9 @@ pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
 
         let remote_url = get_remote_url(&path);
         let repo = remote_url.as_deref().and_then(extract_repo_from_url);
-        let commit = get_current_commit(&path);
-        let branch = get_current_branch(&path);
+        // Defer expensive git calls — commit/branch are only needed on demand
+        let commit = None;
+        let branch = None;
 
         let in_config = repo
             .as_deref()
@@ -443,50 +444,86 @@ pub fn preview_plugin(
     // Add plugin declaration
     conf_lines.push(format!("set -g @plugin '{}'", repo));
 
-    // Add run-shell to source the plugin
-    let entry_tmux = target_dir.join(format!("{}.tmux", plugin_name));
-    if entry_tmux.exists() {
-        conf_lines.push(format!("run-shell '{}'", entry_tmux.display()));
-    } else {
-        // Try to find any .tmux file in the plugin root
-        let mut found_entry = false;
-        if let Ok(entries) = fs::read_dir(&target_dir) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.extension().map(|e| e == "tmux").unwrap_or(false) && p.is_file() {
-                    conf_lines.push(format!("run-shell '{}'", p.display()));
-                    found_entry = true;
-                    break;
-                }
-            }
-        }
-        // Some plugins use a script inside a scripts/ or plugin/ subdir
-        if !found_entry {
-            for subdir in &["scripts", "plugin", "src"] {
-                let sub = target_dir.join(subdir);
-                if sub.is_dir() {
-                    if let Ok(entries) = fs::read_dir(&sub) {
-                        for entry in entries.flatten() {
-                            let p = entry.path();
-                            if p.extension().map(|e| e == "tmux").unwrap_or(false) && p.is_file() {
-                                conf_lines.push(format!("run-shell '{}'", p.display()));
-                                found_entry = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if found_entry { break; }
-            }
-        }
-    }
-
+    // Set a fallback PREVIEW indicator (themes will override status-right with
+    // their own styling — this only shows if the theme doesn't touch it)
     conf_lines.push(String::new());
-    conf_lines.push("# ── Preview status message ──".to_string());
     conf_lines.push(format!(
         "set -g status-right '#[fg=yellow,bold] PREVIEW: {} #[default]'",
         plugin_name
     ));
+    conf_lines.push(String::new());
+
+    // ── Source plugin theme/settings ─────────────────────────────────
+    //
+    // psmux plugins use:  plugin.conf  (static set-g directives)
+    //                     <name>.ps1   (PowerShell script that calls psmux set -g ...)
+    // tmux  plugins use:  <name>.tmux  (shell script entry point)
+    //
+    // For previews the most reliable approach is:
+    //   1) plugin.conf — embed its set-g lines directly (works during config load)
+    //   2) .ps1 script — use run-shell to execute it (psmux)
+    //   3) .tmux script — use run-shell to execute it (tmux)
+    //   4) search subdirs for .tmux/.ps1 scripts
+
+    let plugin_conf = target_dir.join("plugin.conf");
+    if plugin_conf.exists() {
+        // Static conf — source it directly (most reliable for psmux themes).
+        // This contains all the set-g directives and works during config load
+        // (unlike .ps1 scripts which call `psmux set -g` via the control port
+        // that isn't ready during config parsing).
+        conf_lines.push(format!("source-file '{}'", plugin_conf.display()));
+    } else {
+        // No plugin.conf — look for entry scripts (.tmux or .ps1)
+        let entry_tmux = target_dir.join(format!("{}.tmux", plugin_name));
+        let entry_ps1 = target_dir.join(format!("{}.ps1", plugin_name));
+        if entry_tmux.exists() {
+            conf_lines.push(format!("run-shell '{}'", entry_tmux.display()));
+        } else if entry_ps1.exists() {
+            // psmux PowerShell plugin entry point
+            conf_lines.push(format!("run-shell '{}'", entry_ps1.display()));
+        } else {
+            // Search for any .tmux or .ps1 in plugin root and subdirs
+            let mut found_entry = false;
+            if let Ok(entries) = fs::read_dir(&target_dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_file() {
+                        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                        if ext == "tmux" {
+                            conf_lines.push(format!("run-shell '{}'", p.display()));
+                            found_entry = true;
+                            break;
+                        } else if ext == "ps1" {
+                            conf_lines.push(format!("run-shell '{}'", p.display()));
+                            found_entry = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if !found_entry {
+                for subdir in &["scripts", "plugin", "src"] {
+                    let sub = target_dir.join(subdir);
+                    if sub.is_dir() {
+                        if let Ok(entries) = fs::read_dir(&sub) {
+                            for entry in entries.flatten() {
+                                let p = entry.path();
+                                if p.is_file() {
+                                    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                                    if ext == "tmux" || ext == "ps1" {
+                                        conf_lines.push(format!("run-shell '{}'", p.display()));
+                                        found_entry = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if found_entry { break; }
+                }
+            }
+        }
+    }
 
     let conf_content = conf_lines.join("\n") + "\n";
     if let Err(e) = fs::write(&conf_path, &conf_content) {

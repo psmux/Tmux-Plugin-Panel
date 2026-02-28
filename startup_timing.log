@@ -1,0 +1,18 @@
+[TIMING] App::new()          = 78.4µs
+[TIMING] load_config()       = 2.6602169s
+[TIMING] load_registry()     = 31.6µs
+[TIMING] TOTAL startup       = 2.6604656s
+572ms
+[CONFIG] detect_all()         = 180.656ms
+[CONFIG] find_configs()       = 1.5149ms
+[CONFIG] refresh_installed()  = 1.2299732s
+[CONFIG] refresh_themes()     = 1.2467247s
+[CONFIG] refresh_settings()   = 1.0201ms
+[DETECT] detect_platform       = 24.1µs
+[DETECT] detect_multiplexers   = 127.4744ms
+[DETECT] detect_config_locs    = 45.579ms
+[CONFIG] detect_all()         = 173.3983ms
+[CONFIG] find_configs()       = 1.3672ms
+[CONFIG] refresh_installed()  = 1.225s
+[CONFIG] refresh_themes()     = 1.2290797s
+[CONFIG] refresh_settings()   = 1.0631ms

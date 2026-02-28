@@ -127,9 +127,27 @@ impl DetectionReport {
 /// Run the full detection sweep.
 /// Probes all known binary names, resolves paths, finds configs.
 pub fn detect_all() -> DetectionReport {
+    let timing_file = std::fs::OpenOptions::new()
+        .create(true).append(true).open("startup_timing.log").ok();
+    let mut tlog = |msg: String| {
+        if let Some(ref f) = timing_file {
+            use std::io::Write;
+            let _ = writeln!(&*f, "{}", msg);
+        }
+    };
+
+    let t0 = std::time::Instant::now();
     let platform = detect_platform();
+    tlog(format!("[DETECT] detect_platform       = {:?}", t0.elapsed()));
+
+    let t1 = std::time::Instant::now();
     let multiplexers = detect_multiplexers(&platform);
+    tlog(format!("[DETECT] detect_multiplexers   = {:?}", t1.elapsed()));
+
+    let t2 = std::time::Instant::now();
     let config_locations = detect_config_locations(&platform);
+    tlog(format!("[DETECT] detect_config_locs    = {:?}", t2.elapsed()));
+
     let active_configs = config_locations
         .iter()
         .filter(|c| c.exists)
