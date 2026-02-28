@@ -215,42 +215,19 @@ impl App {
     }
 
     pub fn load_config(&mut self) {
-        let timing_file = std::fs::OpenOptions::new()
-            .create(true).append(true).open("startup_timing.log").ok();
-        let mut tlog = |msg: String| {
-            if let Some(ref f) = timing_file {
-                use std::io::Write;
-                let _ = writeln!(&*f, "{}", msg);
-            }
-        };
-
         // Run full detection sweep
-        let tc0 = std::time::Instant::now();
         let report = crate::detect::detect_all();
-        tlog(format!("[CONFIG] detect_all()         = {:?}", tc0.elapsed()));
-
         self.detected_muxes = report.multiplexers.clone();
         self.detection_report = Some(report);
 
         // Find all config files
-        let tc1 = std::time::Instant::now();
         self.all_configs = crate::config::find_configs();
-        tlog(format!("[CONFIG] find_configs()       = {:?}", tc1.elapsed()));
-
         self.active_config_index = 0;
         self.config = self.all_configs.first().cloned();
 
-        let tc2 = std::time::Instant::now();
         self.refresh_installed();
-        tlog(format!("[CONFIG] refresh_installed()  = {:?}", tc2.elapsed()));
-
-        let tc3 = std::time::Instant::now();
         self.refresh_themes();
-        tlog(format!("[CONFIG] refresh_themes()     = {:?}", tc3.elapsed()));
-
-        let tc4 = std::time::Instant::now();
         self.refresh_settings();
-        tlog(format!("[CONFIG] refresh_settings()   = {:?}", tc4.elapsed()));
 
         // Build status message
         let mux_names: Vec<String> = self

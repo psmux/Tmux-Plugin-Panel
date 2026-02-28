@@ -35,27 +35,9 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // ── App init ───────────────────────────────────────────────────
-    let timing_file = std::fs::File::create("startup_timing.log").ok();
-    let mut tlog = |msg: String| {
-        if let Some(ref f) = timing_file {
-            use std::io::Write;
-            let _ = writeln!(&*f, "{}", msg);
-        }
-    };
-
-    let t0 = std::time::Instant::now();
     let mut app = App::new();
-    tlog(format!("[TIMING] App::new()          = {:?}", t0.elapsed()));
-
-    let t1 = std::time::Instant::now();
     app.load_config();
-    tlog(format!("[TIMING] load_config()       = {:?}", t1.elapsed()));
-
-    let t2 = std::time::Instant::now();
     app.load_registry();
-    tlog(format!("[TIMING] load_registry()     = {:?}", t2.elapsed()));
-
-    tlog(format!("[TIMING] TOTAL startup       = {:?}", t0.elapsed()));
     // ── Main loop ──────────────────────────────────────────────────
     let result = run_app(&mut terminal, &mut app).await;
 

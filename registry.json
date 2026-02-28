@@ -348,22 +348,6 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-yank",
-      "name": "psmux-yank",
-      "description": "Copy to system clipboard from PSMux copy mode — Windows native",
-      "category": "clipboard",
-      "stars": 0,
-      "compat": ["psmux"]
-    },
-    {
-      "repo": "marlocarlo/psmux-plugins/psmux-prefix-highlight",
-      "name": "psmux-prefix-highlight",
-      "description": "Highlights when PSMux prefix key is pressed in the status bar",
-      "category": "statusbar",
-      "stars": 0,
-      "compat": ["psmux"]
-    },
-    {
       "repo": "marlocarlo/psmux-plugins/psmux-battery",
       "name": "psmux-battery",
       "description": "Battery percentage and icon in PSMux status bar — PowerShell native",
@@ -414,7 +398,7 @@
     {
       "repo": "marlocarlo/psmux-plugins/psmux-theme-catppuccin",
       "name": "Catppuccin (PSMux)",
-      "description": "Soothing pastel Catppuccin Mocha theme — native PSMux style format",
+      "description": "Soothing pastel theme — Mocha, Macchiato, Frappe, Latte — powerline separators & Nerd Font icons",
       "category": "theme",
       "stars": 0,
       "compat": ["psmux"]
@@ -422,7 +406,7 @@
     {
       "repo": "marlocarlo/psmux-plugins/psmux-theme-dracula",
       "name": "Dracula (PSMux)",
-      "description": "Dark Dracula theme — pure conf, no bash dependency",
+      "description": "Dark Dracula theme — arrow/rounded/slanted separators, gradient status, Nerd Font icons",
       "category": "theme",
       "stars": 0,
       "compat": ["psmux"]
@@ -430,7 +414,7 @@
     {
       "repo": "marlocarlo/psmux-plugins/psmux-theme-gruvbox",
       "name": "Gruvbox (PSMux)",
-      "description": "Warm retro Gruvbox theme with powerline separators",
+      "description": "Warm retro Gruvbox — dark/light, soft/medium/hard contrast, powerline separators & icons",
       "category": "theme",
       "stars": 0,
       "compat": ["psmux"]
@@ -438,7 +422,7 @@
     {
       "repo": "marlocarlo/psmux-plugins/psmux-theme-nord",
       "name": "Nord (PSMux)",
-      "description": "Arctic north-bluish Nord theme — clean and elegant",
+      "description": "Arctic north-bluish Nord — clean powerline with arrow/rounded separators & Nerd Font icons",
       "category": "theme",
       "stars": 0,
       "compat": ["psmux"]
@@ -446,8 +430,56 @@
     {
       "repo": "marlocarlo/psmux-plugins/psmux-theme-tokyonight",
       "name": "Tokyo Night (PSMux)",
-      "description": "Tokyo Night color scheme — storm variant with powerline",
+      "description": "Tokyo Night — night/storm/moon variants, shaped tabs, gradient status & Nerd Font icons",
       "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-rosepine",
+      "name": "Rosé Pine (PSMux)",
+      "description": "Soho vibes — main/moon/dawn variants, powerline separators, Nerd Font icons",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-kanagawa",
+      "name": "Kanagawa (PSMux)",
+      "description": "Japanese wave-inspired — wave/dragon/lotus variants, shaped tabs & gradient status",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-everforest",
+      "name": "Everforest (PSMux)",
+      "description": "Warm green nature-inspired — dark/light, soft/medium/hard contrast, powerline icons",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-theme-onedark",
+      "name": "One Dark (PSMux)",
+      "description": "Atom One Dark — powerline separators, Nerd Font icons, gradient status segments",
+      "category": "theme",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-net-speed",
+      "name": "psmux-net-speed",
+      "description": "Network upload/download speed in status bar — PowerShell native, color-coded thresholds",
+      "category": "statusbar",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "marlocarlo/psmux-plugins/psmux-git-status",
+      "name": "psmux-git-status",
+      "description": "Git branch & status in status bar — branch name, dirty/clean, staged/modified/untracked counts",
+      "category": "statusbar",
       "stars": 0,
       "compat": ["psmux"]
     }
