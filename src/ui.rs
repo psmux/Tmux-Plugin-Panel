@@ -79,11 +79,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_header_divider(f, outer[1]);
     draw_tabs(f, outer[2], app);
 
+    // Store layout regions for mouse hit-testing
+    let r = outer[2];
+    app.layout.tabs_area = Some((r.x, r.y, r.width, r.height));
+    let r = outer[3];
+    app.layout.body_area = Some((r.x, r.y, r.width, r.height));
+
     match app.tab {
         Tab::Dashboard => draw_dashboard_tab(f, outer[3], app),
         Tab::Browse => draw_browse_tab(f, outer[3], app),
         Tab::Installed => draw_installed_tab(f, outer[3], app),
-        Tab::Themes => draw_themes_tab(f, outer[3], app),
         Tab::Config => draw_config_tab(f, outer[3], app),
     }
 
@@ -144,7 +149,7 @@ fn draw_header_divider(f: &mut Frame, area: Rect) {
 
 // ── Tab bar ─────────────────────────────────────────────────────────────
 
-fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
+fn draw_tabs(f: &mut Frame, area: Rect, app: &mut App) {
     let titles: Vec<Line> = Tab::ALL
         .iter()
         .map(|t| {
@@ -156,6 +161,17 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
             Line::from(Span::styled(t.label(), style))
         })
         .collect();
+
+    // Calculate tab hit regions for mouse clicks
+    let mut tab_rects = Vec::new();
+    let mut x_offset = area.x + 1; // account for block border
+    let divider_width = 3u16; // " │ "
+    for tab in Tab::ALL {
+        let label_width = tab.label().len() as u16;
+        tab_rects.push((x_offset, area.y, label_width, area.height));
+        x_offset += label_width + divider_width;
+    }
+    app.layout.tab_rects = tab_rects;
 
     let tabs = Tabs::new(titles)
         .select(app.tab.index())
@@ -380,6 +396,14 @@ fn draw_browse_tab(f: &mut Frame, area: Rect, app: &mut App) {
     ensure_scroll_visible(app.browse_selected, &mut app.browse_scroll_offset, list_inner_h, 2);
     draw_plugin_list(f, cols[1], app, &app.browse_list, app.browse_selected, app.browse_scroll_offset, true);
     draw_detail_panel(f, cols[2], app);
+
+    // Store layout regions for mouse
+    let r = cols[0];
+    app.layout.sidebar_area = Some((r.x, r.y, r.width, r.height));
+    let r = cols[1];
+    app.layout.list_area = Some((r.x, r.y, r.width, r.height));
+    let r = cols[2];
+    app.layout.detail_area = Some((r.x, r.y, r.width, r.height));
 }
 
 fn draw_category_sidebar(f: &mut Frame, area: Rect, app: &App) {
@@ -571,7 +595,7 @@ fn draw_detail_panel(f: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(1),  // repo
             Constraint::Length(2),  // description
             Constraint::Length(1),  // meta
-            Constraint::Length(2),  // actions
+            Constraint::Length(3),  // action buttons + shortcuts
             Constraint::Length(1),  // separator
             Constraint::Min(3),    // readme
         ])
@@ -608,23 +632,40 @@ fn draw_detail_panel(f: &mut Frame, area: Rect, app: &App) {
     .style(Style::default().bg(BG));
     f.render_widget(meta_p, layout[3]);
 
-    // Action hints
-    let action_line = if is_installed {
-        Line::from(vec![
-            Span::styled("  [", Style::default().fg(TEXT_DARK)),
-            Span::styled("u", Style::default().fg(YELLOW).bold()),
-            Span::styled("]pdate  [", Style::default().fg(TEXT_DARK)),
-            Span::styled("x", Style::default().fg(RED).bold()),
-            Span::styled("]remove", Style::default().fg(TEXT_DARK)),
-        ])
+    // Action buttons — clear, visible, styled
+    let (action_line, shortcut_line) = if is_installed {
+        (
+            Line::from(vec![
+                Span::styled("  ", Style::default().bg(BG)),
+                Span::styled(" ⟳ Update ", Style::default().fg(Color::Black).bg(YELLOW).bold()),
+                Span::styled("  ", Style::default().bg(BG)),
+                Span::styled(" ✕ Uninstall ", Style::default().fg(Color::White).bg(RED).bold()),
+                Span::styled("  ", Style::default().bg(BG)),
+                Span::styled(" ▶ Preview ", Style::default().fg(Color::Black).bg(BLUE).bold()),
+                Span::styled("  ", Style::default().bg(BG)),
+                Span::styled(" ⓘ README ", Style::default().fg(Color::Black).bg(Color::Cyan).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled("     u          x/d            p            Enter", Style::default().fg(TEXT_DARK)),
+            ]),
+        )
     } else {
-        Line::from(vec![
-            Span::styled("  [", Style::default().fg(TEXT_DARK)),
-            Span::styled("Enter", Style::default().fg(GREEN).bold()),
-            Span::styled("]install", Style::default().fg(TEXT_DARK)),
-        ])
+        (
+            Line::from(vec![
+                Span::styled("  ", Style::default().bg(BG)),
+                Span::styled(" ⬇ Install ", Style::default().fg(Color::Black).bg(GREEN).bold()),
+                Span::styled("  ", Style::default().bg(BG)),
+                Span::styled(" ▶ Preview ", Style::default().fg(Color::Black).bg(BLUE).bold()),
+                Span::styled("  ", Style::default().bg(BG)),
+                Span::styled(" ⓘ README ", Style::default().fg(Color::Black).bg(Color::Cyan).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled("    Enter         p            Enter(2nd)", Style::default().fg(TEXT_DARK)),
+            ]),
+        )
     };
-    let action_p = Paragraph::new(action_line).style(Style::default().bg(BG));
+    let action_p = Paragraph::new(vec![action_line, Line::from(""), shortcut_line])
+        .style(Style::default().bg(BG));
     f.render_widget(action_p, layout[4]);
 
     // Separator
@@ -748,71 +789,13 @@ fn draw_installed_tab(f: &mut Frame, area: Rect, app: &mut App) {
 
     // Detail panel
     draw_detail_panel(f, cols[1], app);
-}
 
-// ── Themes tab ──────────────────────────────────────────────────────────
-
-fn draw_themes_tab(f: &mut Frame, area: Rect, app: &mut App) {
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(40), Constraint::Min(30)])
-        .split(area);
-
-    let block = Block::default()
-        .borders(Borders::RIGHT)
-        .border_style(Style::default().fg(TEXT_DARK))
-        .style(Style::default().bg(BG));
-    let list_inner = block.inner(cols[0]);
-    f.render_widget(block, cols[0]);
-
-    if app.themes_list.is_empty() {
-        let msg = Paragraph::new("  No themes available.")
-            .style(Style::default().fg(TEXT_DIM).bg(BG));
-        f.render_widget(msg, list_inner);
-    } else {
-        let visible = list_inner.height as usize;
-        ensure_scroll_visible(app.themes_selected, &mut app.themes_scroll_offset, visible, 2);
-        let items: Vec<ListItem> = app
-            .themes_list
-            .iter()
-            .enumerate()
-            .skip(app.themes_scroll_offset)
-            .take(visible / 2)
-            .map(|(i, t)| {
-                let is_sel = i == app.themes_selected;
-                let name_style = if is_sel {
-                    Style::default().fg(ACCENT).bold()
-                } else {
-                    Style::default().fg(TEXT).bold()
-                };
-
-                let status = if t.active {
-                    Span::styled(" ● ACTIVE", Style::default().fg(GREEN).bold())
-                } else if t.installed {
-                    Span::styled(" ●", Style::default().fg(GREEN))
-                } else {
-                    Span::styled(" ○", Style::default().fg(TEXT_DIM))
-                };
-
-                let line1 = Line::from(vec![
-                    Span::styled(format!(" 🎨 {}", t.name()), name_style),
-                    Span::styled(format!(" ★{}", t.stars()), Style::default().fg(YELLOW)),
-                    status,
-                ]);
-                let line2 = Line::from(Span::styled(
-                    format!(" {}", t.description()),
-                    Style::default().fg(TEXT_DIM),
-                ));
-
-                let bg = if is_sel { BG_HIGHLIGHT } else { BG };
-                ListItem::new(vec![line1, line2]).style(Style::default().bg(bg))
-            })
-            .collect();
-
-        f.render_widget(List::new(items), list_inner);
-    }
-
-    draw_detail_panel(f, cols[1], app);
+    // Store layout regions for mouse
+    let r = cols[0];
+    app.layout.list_area = Some((r.x, r.y, r.width, r.height));
+    let r = cols[1];
+    app.layout.detail_area = Some((r.x, r.y, r.width, r.height));
+    app.layout.sidebar_area = None; // Installed tab has no sidebar
 }
 
 // ── Settings tab (was Config) ────────────────────────────────────────────
@@ -1243,6 +1226,7 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
 fn draw_footer(f: &mut Frame, area: Rect, _app: &App) {
     let key_style = Style::default().fg(Color::White).bg(ACCENT).bold();
     let label_style = Style::default().fg(Color::Black).bg(ACCENT);
+    let mouse_style = Style::default().fg(Color::Rgb(180, 255, 180)).bg(ACCENT);
 
     let hints = Line::from(vec![
         Span::styled(" q", key_style),
@@ -1261,12 +1245,10 @@ fn draw_footer(f: &mut Frame, area: Rect, _app: &App) {
         Span::styled(" Upd ", label_style),
         Span::styled("/", key_style),
         Span::styled(" Search ", label_style),
-        Span::styled("R", key_style),
-        Span::styled(" Reload ", label_style),
-        Span::styled("Bksp", key_style),
-        Span::styled(" Reset ", label_style),
-        Span::styled("?", key_style),
-        Span::styled(" Help ", label_style),
+        Span::styled("f", key_style),
+        Span::styled(" Filter ", label_style),
+        Span::styled(" 🖱 Mouse", mouse_style),
+        Span::styled(" ON ", mouse_style),
     ]);
 
     let footer = Paragraph::new(hints).style(Style::default().bg(ACCENT));

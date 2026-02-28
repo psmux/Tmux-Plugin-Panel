@@ -6,7 +6,6 @@ use crate::config::{ConfigSetting, SettingCategory, TmuxConfig};
 use crate::detect::{DetectedMux, DetectionReport};
 use crate::plugins::InstalledPlugin;
 use crate::registry::{self, Category, Compat, RegistryPlugin};
-use crate::themes::ThemeInfo;
 
 /// Which tab is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,7 +13,6 @@ pub enum Tab {
     Dashboard,
     Browse,
     Installed,
-    Themes,
     Config,
 }
 
@@ -23,17 +21,15 @@ impl Tab {
         Tab::Dashboard,
         Tab::Browse,
         Tab::Installed,
-        Tab::Themes,
         Tab::Config,
     ];
 
     pub fn label(&self) -> &'static str {
         match self {
             Tab::Dashboard => " ⌂ Home ",
-            Tab::Browse => " Browse ",
-            Tab::Installed => " Installed ",
-            Tab::Themes => " Themes ",
-            Tab::Config => " Config ",
+            Tab::Browse => " ☰ Browse ",
+            Tab::Installed => " ● Installed ",
+            Tab::Config => " ⚙ Config ",
         }
     }
 
@@ -42,8 +38,7 @@ impl Tab {
             Tab::Dashboard => 0,
             Tab::Browse => 1,
             Tab::Installed => 2,
-            Tab::Themes => 3,
-            Tab::Config => 4,
+            Tab::Config => 3,
         }
     }
 
@@ -52,8 +47,7 @@ impl Tab {
             0 => Tab::Dashboard,
             1 => Tab::Browse,
             2 => Tab::Installed,
-            3 => Tab::Themes,
-            4 => Tab::Config,
+            3 => Tab::Config,
             _ => Tab::Dashboard,
         }
     }
@@ -101,7 +95,7 @@ impl DashboardItem {
     pub fn description(&self) -> &'static str {
         match self {
             DashboardItem::BrowsePlugins => "Search, discover, and install plugins from the registry",
-            DashboardItem::BrowseThemes => "Preview and apply beautiful themes to your terminal",
+            DashboardItem::BrowseThemes => "Browse themes — use the Theme category filter in Browse",
             DashboardItem::ConfigureSettings => "Toggle mouse, status bar, prefix key, and more",
             DashboardItem::ResetToDefaults => "Restore all settings to factory defaults",
             DashboardItem::ManageRegistries => "Add or remove plugin repository sources",
@@ -122,6 +116,7 @@ pub enum Focus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmAction {
     RemovePlugin,
+    InstallPlugin,
     ResetEntireConfig,
     ResetAllSettings,
 }
@@ -141,6 +136,19 @@ pub struct ConfirmDialog {
 pub struct StatusMessage {
     pub text: String,
     pub is_error: bool,
+}
+
+/// Cached layout regions for mouse hit-testing.
+/// These are updated every frame by ui::draw().
+#[derive(Debug, Clone, Default)]
+pub struct LayoutRegions {
+    pub tabs_area: Option<(u16, u16, u16, u16)>,       // (x, y, w, h)
+    pub sidebar_area: Option<(u16, u16, u16, u16)>,     // category sidebar
+    pub list_area: Option<(u16, u16, u16, u16)>,        // plugin/item list
+    pub detail_area: Option<(u16, u16, u16, u16)>,      // detail panel
+    pub action_buttons_area: Option<(u16, u16, u16, u16)>, // action buttons in detail
+    pub body_area: Option<(u16, u16, u16, u16)>,        // full body (for Dashboard)
+    pub tab_rects: Vec<(u16, u16, u16, u16)>,           // individual tab rects
 }
 
 /// The full application state.
@@ -173,11 +181,6 @@ pub struct App {
     pub installed_selected: usize,
     pub installed_scroll_offset: usize,
 
-    // ── Themes tab ──────────────────────────────────
-    pub themes_list: Vec<ThemeInfo>,
-    pub themes_selected: usize,
-    pub themes_scroll_offset: usize,
-
 
     // ── Config/Settings tab ──────────────────────────
     pub config_scroll_offset: usize,
@@ -204,6 +207,9 @@ pub struct App {
 
     // ── Preview pending (repo, config_clone, detected_muxes) ────
     pub preview_pending: Option<(String, crate::config::TmuxConfig, Vec<crate::detect::DetectedMux>)>,
+
+    // ── Layout regions for mouse hit-testing ────────
+    pub layout: LayoutRegions,
 }
 
 impl App {
@@ -245,10 +251,6 @@ impl App {
             installed_selected: 0,
             installed_scroll_offset: 0,
 
-            themes_list: Vec::new(),
-            themes_selected: 0,
-            themes_scroll_offset: 0,
-
             config_scroll_offset: 0,
             settings_list: Vec::new(),
             settings_selected: 0,
@@ -271,6 +273,7 @@ impl App {
             },
             installed_repos: std::collections::HashSet::new(),
             preview_pending: None,
+            layout: LayoutRegions::default(),
         }
     }
 
@@ -286,7 +289,6 @@ impl App {
         self.config = self.all_configs.first().cloned();
 
         self.refresh_installed();
-        self.refresh_themes();
         self.refresh_settings();
 
         // Build status message
@@ -330,7 +332,6 @@ impl App {
         self.active_config_index = (self.active_config_index + 1) % self.all_configs.len();
         self.config = Some(self.all_configs[self.active_config_index].clone());
         self.refresh_installed();
-        self.refresh_themes();
         self.refresh_settings();
         if let Some(cfg) = &self.config {
             self.set_status(&format!(
@@ -350,16 +351,6 @@ impl App {
                 .iter()
                 .filter_map(|p| p.repo.clone())
                 .collect();
-        }
-    }
-
-    pub fn refresh_themes(&mut self) {
-        if let Some(cfg) = &self.config {
-            self.themes_list = crate::themes::get_theme_status_with(
-                cfg,
-                &self.registry,
-                &self.installed_list,
-            );
         }
     }
 
@@ -460,10 +451,6 @@ impl App {
                 .installed_list
                 .get(self.installed_selected)
                 .and_then(|p| p.repo.clone()),
-            Tab::Themes => self
-                .themes_list
-                .get(self.themes_selected)
-                .map(|t| t.repo().to_string()),
             Tab::Config => None,
         }
     }
@@ -480,7 +467,6 @@ impl App {
             Tab::Dashboard => DashboardItem::ALL.len(),
             Tab::Browse => self.browse_list.len(),
             Tab::Installed => self.installed_list.len(),
-            Tab::Themes => self.themes_list.len(),
             Tab::Config => self.filtered_settings().len(),
         }
     }
@@ -491,7 +477,6 @@ impl App {
             Tab::Dashboard => &mut self.dashboard_selected,
             Tab::Browse => &mut self.browse_selected,
             Tab::Installed => &mut self.installed_selected,
-            Tab::Themes => &mut self.themes_selected,
             Tab::Config => &mut self.settings_selected,
         }
     }
@@ -501,7 +486,6 @@ impl App {
             Tab::Dashboard => &mut self.dashboard_selected, // no scrolling needed
             Tab::Browse => &mut self.browse_scroll_offset,
             Tab::Installed => &mut self.installed_scroll_offset,
-            Tab::Themes => &mut self.themes_scroll_offset,
             Tab::Config => &mut self.settings_scroll_offset,
         }
     }

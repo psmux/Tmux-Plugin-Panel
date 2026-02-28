@@ -8,7 +8,6 @@ mod detect;
 mod github;
 mod plugins;
 mod registry;
-mod themes;
 mod ui;
 
 use std::io;
@@ -16,7 +15,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind, MouseButton, EnableMouseCapture, DisableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -30,7 +29,7 @@ async fn main() -> Result<()> {
     // ── Terminal setup ─────────────────────────────────────────────
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -43,7 +42,7 @@ async fn main() -> Result<()> {
 
     // ── Restore terminal ───────────────────────────────────────────
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
     terminal.show_cursor()?;
 
     if let Err(e) = result {
@@ -65,31 +64,8 @@ async fn run_app(
             break;
         }
 
-        // ── Handle preview: ensure plugin available, then launch ──
+        // ── Handle preview: launch in isolated session (no permanent install) ──
         if let Some((repo, _cfg_clone, detected)) = app.preview_pending.take() {
-            // If the plugin directory doesn't exist on disk, install it first
-            // so preview_plugin() can copy from the local install.
-            let plugin_name = repo.split('/').last().unwrap_or(&repo);
-            let dir_exists = app.config.as_ref()
-                .map(|c| c.plugin_install_dir.join(plugin_name).is_dir())
-                .unwrap_or(false);
-
-            if !dir_exists {
-                app.set_status(&format!("Installing {} for preview…", repo));
-                terminal.draw(|f| ui::draw(f, app))?;
-
-                if let Some(ref mut cfg) = app.config {
-                    let r = plugins::install_plugin(&repo, cfg, None);
-                    if r.success {
-                        app.refresh_installed();
-                        app.refresh_themes();
-                        app.refresh_browse();
-                    }
-                    // If install fails, preview_plugin() will try its own
-                    // clone-to-temp-dir fallback — don't abort here.
-                }
-            }
-
             let cfg_snapshot = match app.config {
                 Some(ref c) => c.clone(),
                 None => {
@@ -98,16 +74,20 @@ async fn run_app(
                 }
             };
 
+            app.set_status(&format!("Launching preview of {}…", repo));
+            terminal.draw(|f| ui::draw(f, app))?;
+
+            // Restore terminal for the preview subprocess
             // Restore terminal for the preview subprocess
             disable_raw_mode()?;
-            execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+            execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
             terminal.show_cursor()?;
 
             let result = plugins::preview_plugin(&repo, &cfg_snapshot, &detected);
 
             // Re-enter TUI
             enable_raw_mode()?;
-            execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+            execute!(terminal.backend_mut(), EnterAlternateScreen, EnableMouseCapture)?;
             terminal.hide_cursor()?;
             terminal.clear()?;
 
@@ -121,7 +101,8 @@ async fn run_app(
 
         // Poll events (16ms ≈ 60fps, non-blocking for smooth UI)
         if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
+            match event::read()? {
+                Event::Key(key) => {
                 // Only handle key press events (not release/repeat on Windows)
                 if key.kind != KeyEventKind::Press {
                     continue;
@@ -146,6 +127,11 @@ async fn run_app(
 
                 // ── Normal mode ────────────────────────────────────
                 handle_normal_input(app, key.code, key.modifiers).await;
+                }
+                Event::Mouse(mouse) => {
+                    handle_mouse_event(app, mouse).await;
+                }
+                _ => {}
             }
         }
     }
@@ -156,6 +142,277 @@ fn is_search_editing(app: &App) -> bool {
     match app.tab {
         Tab::Browse => app.browse_search_editing,
         _ => false,
+    }
+}
+
+// ── Mouse event handler ─────────────────────────────────────────────────
+
+fn hit_test(x: u16, y: u16, region: &Option<(u16, u16, u16, u16)>) -> bool {
+    if let Some((rx, ry, rw, rh)) = region {
+        x >= *rx && x < rx + rw && y >= *ry && y < ry + rh
+    } else {
+        false
+    }
+}
+
+async fn handle_mouse_event(app: &mut App, mouse: crossterm::event::MouseEvent) {
+    let x = mouse.column;
+    let y = mouse.row;
+
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            // ── Confirmation dialog: handle button clicks ──────
+            if app.confirm.is_some() {
+                // Simple left/right split for Cancel/Confirm buttons
+                // The dialog is centered, so approximate
+                if let Some(ref mut dialog) = app.confirm {
+                    // Just toggle and let keyboard Enter confirm
+                    let center_x = 25u16; // approximate dialog center
+                    if x > center_x {
+                        dialog.confirm_selected = true;
+                    } else {
+                        dialog.confirm_selected = false;
+                    }
+                }
+                return;
+            }
+
+            // ── Tab bar clicks ─────────────────────────────────
+            if hit_test(x, y, &app.layout.tabs_area) {
+                for (i, rect) in app.layout.tab_rects.iter().enumerate() {
+                    if x >= rect.0 && x < rect.0 + rect.2 && y >= rect.1 && y < rect.1 + rect.3 {
+                        app.tab = Tab::from_index(i);
+                        app.detail_readme = None;
+                        app.detail_scroll_offset = 0;
+                        return;
+                    }
+                }
+            }
+
+            // ── Dashboard clicks ───────────────────────────────
+            if app.tab == Tab::Dashboard {
+                if hit_test(x, y, &app.layout.body_area) {
+                    // Map y position to dashboard item (approximate: each card is ~2 lines)
+                    if let Some((_, by, _, _)) = app.layout.body_area {
+                        let relative_y = y.saturating_sub(by + 6); // offset for welcome + spacer
+                        let item_idx = (relative_y / 2) as usize;
+                        let len = app::DashboardItem::ALL.len();
+                        if item_idx < len {
+                            app.dashboard_selected = item_idx;
+                            handle_dashboard_enter(app);
+                        }
+                    }
+                }
+                return;
+            }
+
+            // ── Category sidebar clicks (Browse tab) ───────────
+            if app.tab == Tab::Browse && hit_test(x, y, &app.layout.sidebar_area) {
+                if let Some((_, sy, _, _)) = app.layout.sidebar_area {
+                    let relative_y = y.saturating_sub(sy + 2); // account for block title
+                    let cat_idx = relative_y as usize;
+                    let max_cats = Category::ALL.len() + 1; // +1 for "All"
+                    if cat_idx < max_cats {
+                        app.browse_category_index = cat_idx;
+                        app.browse_category = if cat_idx == 0 {
+                            None
+                        } else {
+                            Some(Category::ALL[cat_idx - 1])
+                        };
+                        app.refresh_browse();
+                    }
+                }
+                return;
+            }
+
+            // ── Plugin list clicks ─────────────────────────────
+            if hit_test(x, y, &app.layout.list_area) {
+                if let Some((_, ly, _, _)) = app.layout.list_area {
+                    let relative_y = y.saturating_sub(ly);
+                    // Account for search bar in browse tab (3 lines: border + input + border area)
+                    let offset_y = if app.tab == Tab::Browse {
+                        relative_y.saturating_sub(3)
+                    } else {
+                        relative_y
+                    };
+                    let item_idx = (offset_y / 2) as usize; // 2 lines per item
+                    let scroll = match app.tab {
+                        Tab::Browse => app.browse_scroll_offset,
+                        Tab::Installed => app.installed_scroll_offset,
+                        _ => 0,
+                    };
+                    let actual_idx = scroll + item_idx;
+                    let len = app.current_list_len();
+                    if actual_idx < len {
+                        let sel = app.selected_mut();
+                        *sel = actual_idx;
+                        app.detail_scroll_offset = 0;
+                    }
+                }
+                return;
+            }
+
+            // ── Detail panel / Action button clicks ────────────
+            if hit_test(x, y, &app.layout.detail_area) {
+                if let Some((dx, dy, _dw, _)) = app.layout.detail_area {
+                    let relative_y = y.saturating_sub(dy);
+                    // Action buttons are at approximately y offset 7-9 (name:2 + repo:1 + desc:2 + meta:1 + gap ≈ 7)
+                    if relative_y >= 6 && relative_y <= 8 {
+                        // Determine which button was clicked based on x position
+                        let relative_x = x.saturating_sub(dx);
+                        if let Some(repo) = app.selected_repo() {
+                            let is_installed = app.installed_repos.contains(&repo);
+                            if is_installed {
+                                // Buttons: Update(2-12) Uninstall(14-27) Preview(29-39) README(41-51)
+                                if relative_x >= 2 && relative_x < 13 {
+                                    // Update button
+                                    handle_mouse_update(app, &repo);
+                                } else if relative_x >= 14 && relative_x < 28 {
+                                    // Uninstall button
+                                    handle_mouse_uninstall(app, &repo);
+                                } else if relative_x >= 29 && relative_x < 40 {
+                                    // Preview button
+                                    handle_mouse_preview(app, &repo);
+                                } else if relative_x >= 41 {
+                                    // README button
+                                    handle_mouse_readme(app, &repo).await;
+                                }
+                            } else {
+                                // Buttons: Install(2-13) Preview(15-25) README(27-37)
+                                if relative_x >= 2 && relative_x < 14 {
+                                    // Install button
+                                    handle_mouse_install(app, &repo);
+                                } else if relative_x >= 15 && relative_x < 26 {
+                                    // Preview button
+                                    handle_mouse_preview(app, &repo);
+                                } else if relative_x >= 27 {
+                                    // README button
+                                    handle_mouse_readme(app, &repo).await;
+                                }
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+
+            // ── Config tab list clicks ─────────────────────────
+            if app.tab == Tab::Config {
+                if hit_test(x, y, &app.layout.body_area) {
+                    if let Some((_, by, _, _)) = app.layout.body_area {
+                        let relative_y = y.saturating_sub(by + 3); // header offset
+                        let item_idx = (relative_y / 2) as usize + app.settings_scroll_offset;
+                        let len = app.filtered_settings().len();
+                        if item_idx < len {
+                            app.settings_selected = item_idx;
+                        }
+                    }
+                }
+            }
+        }
+
+        MouseEventKind::Down(MouseButton::Right) => {
+            // Right-click on a plugin → show context menu (uninstall/remove)
+            if let Some(repo) = app.selected_repo() {
+                if app.installed_repos.contains(&repo) {
+                    handle_mouse_uninstall(app, &repo);
+                }
+            }
+        }
+
+        MouseEventKind::ScrollUp => {
+            // Scroll the list or readme
+            if hit_test(x, y, &app.layout.detail_area) {
+                app.detail_scroll_offset = app.detail_scroll_offset.saturating_sub(3);
+            } else if hit_test(x, y, &app.layout.list_area) || hit_test(x, y, &app.layout.body_area) {
+                app.move_selection(-3);
+            }
+        }
+
+        MouseEventKind::ScrollDown => {
+            if hit_test(x, y, &app.layout.detail_area) {
+                app.detail_scroll_offset = app.detail_scroll_offset.saturating_add(3);
+            } else if hit_test(x, y, &app.layout.list_area) || hit_test(x, y, &app.layout.body_area) {
+                app.move_selection(3);
+            }
+        }
+
+        MouseEventKind::Moved | MouseEventKind::Drag(_) => {
+            // Could add hover effects later
+        }
+
+        _ => {}
+    }
+}
+
+fn handle_mouse_update(app: &mut App, repo: &str) {
+    // Clone the plugin data to avoid borrow conflict
+    let plugin = app
+        .installed_list
+        .iter()
+        .find(|p| p.repo.as_deref() == Some(repo))
+        .cloned();
+    if let Some(plugin) = plugin {
+        app.set_status(&format!("Updating {}...", repo));
+        let result = plugins::update_plugin(&plugin);
+        if result.success {
+            app.set_status(&result.message);
+            app.refresh_installed();
+        } else {
+            app.set_status_err(&result.message);
+        }
+    }
+}
+
+fn handle_mouse_uninstall(app: &mut App, repo: &str) {
+    let name = repo.split('/').last().unwrap_or(repo).to_string();
+    app.confirm = Some(app::ConfirmDialog {
+        title: "Remove Plugin".to_string(),
+        message: format!("Remove '{}' and delete its files?\n\nRepo: {}", name, repo),
+        repo: repo.to_string(),
+        action: app::ConfirmAction::RemovePlugin,
+        confirm_selected: false,
+    });
+}
+
+fn handle_mouse_preview(app: &mut App, repo: &str) {
+    if let Some(ref cfg) = app.config {
+        let cfg_clone = cfg.clone();
+        let detected = app.detected_muxes.clone();
+        app.set_status(&format!("Launching preview of {}...", repo));
+        app.preview_pending = Some((repo.to_string(), cfg_clone, detected));
+    } else {
+        app.set_status_err("No config file — press 'c' to create one first");
+    }
+}
+
+fn handle_mouse_install(app: &mut App, repo: &str) {
+    // Show install confirmation
+    let name = repo.split('/').last().unwrap_or(repo).to_string();
+    app.confirm = Some(app::ConfirmDialog {
+        title: "Install Plugin".to_string(),
+        message: format!("Install '{}' from {}?", name, repo),
+        repo: repo.to_string(),
+        action: app::ConfirmAction::InstallPlugin,
+        confirm_selected: true, // default to Confirm for install
+    });
+}
+
+async fn handle_mouse_readme(app: &mut App, repo: &str) {
+    if app.detail_readme.is_none() {
+        app.detail_readme_loading = true;
+        app.set_status(&format!("Fetching README for {}...", repo));
+        match github::get_repo_readme(repo).await {
+            Ok(readme) => {
+                app.detail_readme = Some(readme);
+                app.detail_scroll_offset = 0;
+                app.set_status("README loaded");
+            }
+            Err(e) => {
+                app.set_status_err(&format!("Failed to fetch README: {}", e));
+            }
+        }
+        app.detail_readme_loading = false;
     }
 }
 
@@ -245,11 +502,26 @@ async fn handle_confirm_input(app: &mut App, code: KeyCode) {
                             if result.success {
                                 app.set_status(&result.message);
                                 app.refresh_installed();
-                                app.refresh_themes();
                                 app.refresh_browse();
                             } else {
                                 app.set_status_err(&result.message);
                             }
+                        }
+                    }
+                    app::ConfirmAction::InstallPlugin => {
+                        let repo = dialog.repo.clone();
+                        app.set_status(&format!("Installing {}...", repo));
+                        if let Some(ref mut cfg) = app.config {
+                            let result = plugins::install_plugin(&repo, cfg, None);
+                            if result.success {
+                                app.set_status(&result.message);
+                                app.refresh_installed();
+                                app.refresh_browse();
+                            } else {
+                                app.set_status_err(&result.message);
+                            }
+                        } else {
+                            app.set_status_err("No config file found. Press 'c' to create one.");
                         }
                     }
                     app::ConfirmAction::ResetEntireConfig => {
@@ -271,7 +543,6 @@ async fn handle_confirm_input(app: &mut App, code: KeyCode) {
                         match reset_result {
                             Ok((reload_result, type_label, backup_note)) => {
                                 app.refresh_installed();
-                                app.refresh_themes();
                                 app.refresh_settings();
                                 app.refresh_browse();
                                 if reload_result.success {
@@ -347,8 +618,7 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         KeyCode::Char('1') => { app.tab = Tab::Dashboard; app.detail_readme = None; }
         KeyCode::Char('2') => { app.tab = Tab::Browse; app.detail_readme = None; }
         KeyCode::Char('3') => { app.tab = Tab::Installed; app.detail_readme = None; }
-        KeyCode::Char('4') => { app.tab = Tab::Themes; app.detail_readme = None; }
-        KeyCode::Char('5') => { app.tab = Tab::Config; app.detail_readme = None; }
+        KeyCode::Char('4') => { app.tab = Tab::Config; app.detail_readme = None; }
 
         // ── Navigation ──────────────────────────────────────
         KeyCode::Up | KeyCode::Char('k') => {
@@ -590,7 +860,7 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
 
         // ── Preview plugin/theme (p) ──────────────────────
         KeyCode::Char('p') => {
-            if matches!(app.tab, Tab::Browse | Tab::Themes | Tab::Installed) {
+            if matches!(app.tab, Tab::Browse | Tab::Installed) {
                 if let Some(repo) = app.selected_repo() {
                     if let Some(ref cfg) = app.config {
                         let cfg_clone = cfg.clone();
@@ -656,7 +926,7 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         // ── Help ────────────────────────────────────────────
         KeyCode::Char('?') => {
             app.set_status(
-                "q:quit Tab:sw 1-5:tabs ↑↓:nav Enter:action x:rm u:upd p:preview /:srch Bksp:reset D:resetAll Ctrl+D:factoryReset R:reload",
+                "q:quit Tab:sw 1-4:tabs ↑↓:nav Enter:action x:rm u:upd p:preview /:srch Bksp:reset D:resetAll Ctrl+D:factoryReset R:reload",
             );
         }
 
@@ -675,9 +945,12 @@ fn handle_dashboard_enter(app: &mut App) {
             app.set_status("Browse and install plugins — use ↑↓ to navigate, Enter to install");
         }
         DashboardItem::BrowseThemes => {
-            app.tab = Tab::Themes;
+            app.tab = Tab::Browse;
+            app.browse_category_index = 2; // Theme is Category::ALL[1], so index 2 (1-based in sidebar: 0=All)
+            app.browse_category = Some(Category::Theme);
+            app.refresh_browse();
             app.detail_readme = None;
-            app.set_status("Browse themes — Enter to install, p to preview");
+            app.set_status("Browsing themes — Enter to install, p to preview");
         }
         DashboardItem::ConfigureSettings => {
             app.tab = Tab::Config;
@@ -742,7 +1015,6 @@ async fn handle_enter(app: &mut App) {
                 if result.success {
                     app.set_status(&result.message);
                     app.refresh_installed();
-                    app.refresh_themes();
                     app.refresh_browse();
                 } else {
                     app.set_status_err(&result.message);

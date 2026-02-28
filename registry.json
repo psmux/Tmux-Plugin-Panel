@@ -482,6 +482,14 @@
       "category": "statusbar",
       "stars": 0,
       "compat": ["psmux"]
+    },
+    {
+      "repo": "psmux-plugins/terminal-os",
+      "name": "TerminalOS",
+      "description": "TUI desktop environment — floating windows, taskbar, start menu, desktop icons inside tmux/psmux. Resize, minimize, maximize, drag windows. Launch terminal apps from a start menu with fuzzy search. Virtual desktops, session persistence, crash recovery.",
+      "category": "utility",
+      "stars": 0,
+      "compat": ["psmux", "tmux"]
     }
   ]
 }
