@@ -33,7 +33,33 @@ const BLUE: Color = Color::Rgb(85, 170, 255);       // Terminal cyan-blue
 
 // ── Main draw ───────────────────────────────────────────────────────────
 
-pub fn draw(f: &mut Frame, app: &App) {
+/// Ensure scroll_offset keeps the selected index visible.
+/// `lines_per_item` is how many terminal rows each list row occupies (usually 2).
+fn ensure_scroll_visible(
+    selected: usize,
+    scroll_offset: &mut usize,
+    visible_height: usize,
+    lines_per_item: usize,
+) {
+    let items_visible = if lines_per_item > 0 {
+        visible_height / lines_per_item
+    } else {
+        visible_height
+    };
+    if items_visible == 0 {
+        return;
+    }
+    // Scroll down if selection is below viewport
+    if selected >= *scroll_offset + items_visible {
+        *scroll_offset = selected.saturating_sub(items_visible - 1);
+    }
+    // Scroll up if selection is above viewport
+    if selected < *scroll_offset {
+        *scroll_offset = selected;
+    }
+}
+
+pub fn draw(f: &mut Frame, app: &mut App) {
     let size = f.area();
 
     // Overall layout: header(2) | divider(1) | tabs(3) | body | status(1) | footer(1)
@@ -145,7 +171,7 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
 
 // ── Browse tab ──────────────────────────────────────────────────────────
 
-fn draw_browse_tab(f: &mut Frame, area: Rect, app: &App) {
+fn draw_browse_tab(f: &mut Frame, area: Rect, app: &mut App) {
     // Split: sidebar(20) | list | detail
     let cols = Layout::default()
         .direction(Direction::Horizontal)
@@ -157,6 +183,9 @@ fn draw_browse_tab(f: &mut Frame, area: Rect, app: &App) {
         .split(area);
 
     draw_category_sidebar(f, cols[0], app);
+    // Adjust scroll to keep selection visible (2 lines per item, minus search bar)
+    let list_inner_h = cols[1].height.saturating_sub(4) as usize; // border + search bar
+    ensure_scroll_visible(app.browse_selected, &mut app.browse_scroll_offset, list_inner_h, 2);
     draw_plugin_list(f, cols[1], app, &app.browse_list, app.browse_selected, app.browse_scroll_offset, true);
     draw_detail_panel(f, cols[2], app);
 }
@@ -264,7 +293,7 @@ fn draw_plugin_list(
         .iter()
         .enumerate()
         .skip(scroll_offset)
-        .take(visible_height)
+        .take(visible_height / 2) // 2 lines per item
         .map(|(i, p)| {
             let is_sel = i == selected;
             let is_inst = app.installed_repos.contains(p.repo.as_str());
@@ -452,7 +481,7 @@ fn draw_detail_panel(f: &mut Frame, area: Rect, app: &App) {
 
 // ── Installed tab ───────────────────────────────────────────────────────
 
-fn draw_installed_tab(f: &mut Frame, area: Rect, app: &App) {
+fn draw_installed_tab(f: &mut Frame, area: Rect, app: &mut App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(2), Constraint::Min(1)])
@@ -493,12 +522,13 @@ fn draw_installed_tab(f: &mut Frame, area: Rect, app: &App) {
         f.render_widget(msg, list_inner);
     } else {
         let visible = list_inner.height as usize;
+        ensure_scroll_visible(app.installed_selected, &mut app.installed_scroll_offset, visible, 2);
         let items: Vec<ListItem> = app
             .installed_list
             .iter()
             .enumerate()
             .skip(app.installed_scroll_offset)
-            .take(visible)
+            .take(visible / 2)
             .map(|(i, p)| {
                 let is_sel = i == app.installed_selected;
                 let name_style = if is_sel {
@@ -530,7 +560,7 @@ fn draw_installed_tab(f: &mut Frame, area: Rect, app: &App) {
 
 // ── Themes tab ──────────────────────────────────────────────────────────
 
-fn draw_themes_tab(f: &mut Frame, area: Rect, app: &App) {
+fn draw_themes_tab(f: &mut Frame, area: Rect, app: &mut App) {
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(40), Constraint::Min(30)])
@@ -549,12 +579,13 @@ fn draw_themes_tab(f: &mut Frame, area: Rect, app: &App) {
         f.render_widget(msg, list_inner);
     } else {
         let visible = list_inner.height as usize;
+        ensure_scroll_visible(app.themes_selected, &mut app.themes_scroll_offset, visible, 2);
         let items: Vec<ListItem> = app
             .themes_list
             .iter()
             .enumerate()
             .skip(app.themes_scroll_offset)
-            .take(visible)
+            .take(visible / 2)
             .map(|(i, t)| {
                 let is_sel = i == app.themes_selected;
                 let name_style = if is_sel {
@@ -594,7 +625,7 @@ fn draw_themes_tab(f: &mut Frame, area: Rect, app: &App) {
 
 // ── Settings tab (was Config) ────────────────────────────────────────────
 
-fn draw_config_tab(f: &mut Frame, area: Rect, app: &App) {
+fn draw_config_tab(f: &mut Frame, area: Rect, app: &mut App) {
     let block = Block::default()
         .borders(Borders::NONE)
         .style(Style::default().bg(BG));
@@ -605,7 +636,8 @@ fn draw_config_tab(f: &mut Frame, area: Rect, app: &App) {
         None => {
             draw_no_config(f, inner, app);
         }
-        Some(cfg) => {
+        Some(_) => {
+            let cfg = app.config.clone().unwrap();
             // Split: settings category sidebar | settings list | detection info
             let cols = Layout::default()
                 .direction(Direction::Horizontal)
@@ -617,7 +649,7 @@ fn draw_config_tab(f: &mut Frame, area: Rect, app: &App) {
                 .split(inner);
 
             draw_settings_sidebar(f, cols[0], app);
-            draw_settings_list(f, cols[1], app, cfg);
+            draw_settings_list(f, cols[1], app, &cfg);
             draw_detection_panel(f, cols[2], app);
         }
     }
@@ -695,7 +727,7 @@ fn draw_settings_sidebar(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(list, sb_inner);
 }
 
-fn draw_settings_list(f: &mut Frame, area: Rect, app: &App, cfg: &TmuxConfig) {
+fn draw_settings_list(f: &mut Frame, area: Rect, app: &mut App, cfg: &TmuxConfig) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Min(1)])
@@ -732,8 +764,9 @@ fn draw_settings_list(f: &mut Frame, area: Rect, app: &App, cfg: &TmuxConfig) {
 
     // Settings list
     let list_area = layout[1];
-    let filtered = app.filtered_settings();
     let visible_height = list_area.height as usize;
+    ensure_scroll_visible(app.settings_selected, &mut app.settings_scroll_offset, visible_height, 2);
+    let filtered = app.filtered_settings();
 
     if filtered.is_empty() {
         let msg = Paragraph::new("  No settings in this category.")

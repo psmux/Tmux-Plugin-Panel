@@ -11,6 +11,70 @@ use std::fs;
 use crate::config::{self, TmuxConfig};
 use crate::registry;
 
+/// Monorepo mapping: org prefix → actual GitHub repo containing all plugins
+/// as subdirectories. When cloning `psmux-plugins/<name>` fails as an
+/// individual repo, we fall back to cloning the full monorepo and extracting
+/// just the `<name>` subdirectory.
+const MONOREPO_MAP: &[(&str, &str)] = &[
+    ("psmux-plugins", "marlocarlo/psmux-plugins"),
+];
+
+/// If `repo` is `<org>/<name>` and `<org>` is in MONOREPO_MAP, clone the
+/// monorepo, move the `<name>` subdirectory to `target_dir`, and clean up.
+fn clone_from_monorepo(repo: &str, target_dir: &Path) -> Option<OpResult> {
+    let parts: Vec<&str> = repo.splitn(2, '/').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let (org, name) = (parts[0], parts[1]);
+    let monorepo_url = MONOREPO_MAP.iter()
+        .find(|(prefix, _)| *prefix == org)
+        .map(|(_, url)| *url);
+    let monorepo_url = match monorepo_url {
+        Some(u) => u,
+        None => return None,
+    };
+
+    let tmp_dir = std::env::temp_dir().join(format!("tppanel-monorepo-{}", org));
+    let _ = force_remove_dir(&tmp_dir);
+
+    let clone_url = format!("https://github.com/{}.git", monorepo_url);
+    let tmp_str = tmp_dir.display().to_string();
+    let (ok, output) = run_git(&["clone", "--depth=1", &clone_url, &tmp_str], None);
+    if !ok {
+        let _ = force_remove_dir(&tmp_dir);
+        return Some(OpResult {
+            success: false,
+            message: format!("Monorepo clone failed ({}): {}", monorepo_url, output),
+        });
+    }
+
+    let sub_dir = tmp_dir.join(name);
+    if !sub_dir.is_dir() {
+        let _ = force_remove_dir(&tmp_dir);
+        return Some(OpResult {
+            success: false,
+            message: format!("'{}' not found in monorepo {}", name, monorepo_url),
+        });
+    }
+
+    // Move the subdirectory to the target location
+    if let Err(e) = copy_dir_recursive(&sub_dir, target_dir) {
+        let _ = force_remove_dir(&tmp_dir);
+        let _ = force_remove_dir(target_dir);
+        return Some(OpResult {
+            success: false,
+            message: format!("Failed to extract '{}' from monorepo: {}", name, e),
+        });
+    }
+
+    let _ = force_remove_dir(&tmp_dir);
+    Some(OpResult {
+        success: true,
+        message: format!("Installed '{}' from monorepo {}", name, monorepo_url),
+    })
+}
+
 /// An installed plugin on disk.
 #[derive(Debug, Clone)]
 pub struct InstalledPlugin {
@@ -50,6 +114,48 @@ pub struct OpResult {
     pub message: String,
 }
 
+// ── Robust directory removal (Windows read-only .git files) ─────────────
+
+/// Check whether a directory contains at least one real file (not just empty dirs).
+fn dir_has_content(path: &Path) -> bool {
+    fs::read_dir(path)
+        .map(|entries| {
+            entries.flatten().any(|e| {
+                let p = e.path();
+                p.is_file() || (p.is_dir() && dir_has_content(&p))
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// Remove a directory tree, clearing read-only flags first (needed on Windows
+/// where git marks objects read-only).
+fn force_remove_dir(path: &Path) -> std::io::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    // First pass: clear read-only attributes on all files
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                let _ = force_remove_dir(&p);
+            } else {
+                // Clear read-only flag
+                if let Ok(md) = fs::metadata(&p) {
+                    let mut perms = md.permissions();
+                    if perms.readonly() {
+                        perms.set_readonly(false);
+                        let _ = fs::set_permissions(&p, perms);
+                    }
+                }
+                let _ = fs::remove_file(&p);
+            }
+        }
+    }
+    fs::remove_dir_all(path)
+}
+
 // ── Git helpers ─────────────────────────────────────────────────────────
 
 fn run_git(args: &[&str], cwd: Option<&Path>) -> (bool, String) {
@@ -62,7 +168,19 @@ fn run_git(args: &[&str], cwd: Option<&Path>) -> (bool, String) {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let msg = if stdout.is_empty() { stderr } else { stdout };
+            // Combine both streams so error details aren't lost
+            let msg = match (stdout.is_empty(), stderr.is_empty()) {
+                (true, true) => String::new(),
+                (false, true) => stdout,
+                (true, false) => stderr,
+                (false, false) => format!("{} | {}", stdout, stderr),
+            };
+            // Strip noisy "Cloning into '...'" prefix to surface the real error
+            let msg = msg
+                .lines()
+                .filter(|l| !l.starts_with("Cloning into"))
+                .collect::<Vec<_>>()
+                .join(" ");
             (output.status.success(), msg)
         }
         Err(e) => (false, format!("git error: {}", e)),
@@ -176,10 +294,61 @@ pub fn install_plugin(
     let target_dir = install_dir.join(plugin_name);
 
     if target_dir.exists() {
-        return OpResult {
-            success: false,
-            message: format!("'{}' already exists", plugin_name),
-        };
+        // If it has a .git dir OR contains real content (e.g. plugin.conf,
+        // scripts), treat it as a valid prior install.  PSMux themes that
+        // were installed from a monorepo or by PPM won't have .git but are
+        // perfectly valid.
+        let has_git = target_dir.join(".git").exists();
+        let has_content = !has_git && dir_has_content(&target_dir);
+        if has_git || has_content {
+            // Already present — just make sure it's registered in the config
+            let _ = config::add_plugin_to_config(config, repo, branch);
+            return OpResult {
+                success: true,
+                message: format!("'{}' already installed", plugin_name),
+            };
+        }
+        // Truly empty / stale partial dir — safe to clean up
+        let _ = force_remove_dir(&target_dir);
+        if target_dir.exists() {
+            return OpResult {
+                success: false,
+                message: format!("Cannot remove stale dir for '{}'", plugin_name),
+            };
+        }
+    }
+
+    // ── Try local monorepo first (fast, no network) ─────────────────
+    // For "psmux-plugins/psmux-theme-X", check if ~/.psmux/plugins/psmux-plugins/
+    // has the subdirectory and copy from there.
+    {
+        let parts: Vec<&str> = repo.splitn(2, '/').collect();
+        if parts.len() == 2 {
+            let (org, name) = (parts[0], parts[1]);
+            let monorepo_local = install_dir.join(org);
+            if monorepo_local.is_dir() {
+                if !monorepo_local.join(name).is_dir() && monorepo_local.join(".git").exists() {
+                    // Subdirectory missing — try git pull to get latest
+                    let _ = run_git(&["pull", "--ff-only"], Some(&monorepo_local));
+                }
+                let sub = monorepo_local.join(name);
+                if sub.is_dir() {
+                    match copy_dir_recursive(&sub, &target_dir) {
+                        Ok(()) => {
+                            let _ = config::add_plugin_to_config(config, repo, branch);
+                            return OpResult {
+                                success: true,
+                                message: format!("Installed '{}' from local monorepo", plugin_name),
+                            };
+                        }
+                        Err(_) => {
+                            // Copy failed — clean up and try clone
+                            let _ = force_remove_dir(&target_dir);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     let clone_url = format!("https://github.com/{}.git", repo);
@@ -194,12 +363,21 @@ pub fn install_plugin(
 
     let (ok, output) = run_git(&args, None);
     if !ok {
-        // Clean up partial clone
-        let _ = fs::remove_dir_all(&target_dir);
-        return OpResult {
-            success: false,
-            message: format!("Clone failed: {}", output),
-        };
+        // Clean up partial clone (force-remove for Windows read-only .git files)
+        let _ = force_remove_dir(&target_dir);
+
+        // Fallback: try monorepo clone for orgs like psmux-plugins
+        if let Some(mono_result) = clone_from_monorepo(repo, &target_dir) {
+            if !mono_result.success {
+                return mono_result;
+            }
+            // Monorepo extraction succeeded — fall through to add to config
+        } else {
+            return OpResult {
+                success: false,
+                message: format!("Clone failed: {}", output),
+            };
+        }
     }
 
     // Add to config
@@ -218,7 +396,7 @@ pub fn remove_plugin(repo: &str, config: &mut TmuxConfig) -> OpResult {
     let target_dir = config.plugin_install_dir.join(plugin_name);
 
     if target_dir.exists() {
-        if let Err(e) = fs::remove_dir_all(&target_dir) {
+        if let Err(e) = force_remove_dir(&target_dir) {
             return OpResult {
                 success: false,
                 message: format!("Failed to delete: {}", e),
@@ -386,7 +564,7 @@ pub fn preview_plugin(
 
     // Clean up any previous preview for this plugin
     if preview_dir.exists() {
-        let _ = fs::remove_dir_all(&preview_dir);
+        let _ = force_remove_dir(&preview_dir);
     }
     let _ = fs::create_dir_all(&preview_dir);
 
@@ -397,37 +575,95 @@ pub fn preview_plugin(
 
     // ── Try to reuse the already-installed copy first ──────────────
     let already_installed_dir = config.plugin_install_dir.join(plugin_name);
-    let have_local_copy = if already_installed_dir.is_dir() {
+    let mut have_local_copy = false;
+    let mut copy_err: Option<String> = None;
+
+    if already_installed_dir.is_dir() {
         // Copy the installed plugin to our preview dir
         match copy_dir_recursive(&already_installed_dir, &target_dir) {
-            Ok(()) => true,
-            Err(_) => false,
+            Ok(()) => { have_local_copy = true; }
+            Err(e) => { copy_err = Some(format!("{}", e)); }
         }
-    } else {
-        false
-    };
+    }
+
+    // Fallback: if the plugin is from a monorepo and the full monorepo is
+    // cloned locally, extract the subdirectory from there.
+    if !have_local_copy {
+        let parts: Vec<&str> = repo.splitn(2, '/').collect();
+        if parts.len() == 2 {
+            let (org, name) = (parts[0], parts[1]);
+            // Check if the monorepo directory itself is installed
+            let monorepo_local = config.plugin_install_dir.join(org);
+            if monorepo_local.is_dir() {
+                let sub = monorepo_local.join(name);
+                if !sub.is_dir() {
+                    // Subdir missing — try `git pull` to update the local clone
+                    if monorepo_local.join(".git").exists() {
+                        let _ = run_git(&["pull", "--ff-only"], Some(&monorepo_local));
+                    }
+                }
+                // Re-check after possible pull
+                let sub = monorepo_local.join(name);
+                if sub.is_dir() {
+                    // Clean partial target from failed copy above
+                    if target_dir.exists() { let _ = force_remove_dir(&target_dir); }
+                    match copy_dir_recursive(&sub, &target_dir) {
+                        Ok(()) => { have_local_copy = true; copy_err = None; }
+                        Err(e) => { copy_err = Some(format!("monorepo local: {}", e)); }
+                    }
+                }
+            }
+        }
+    }
 
     // ── If no local copy, clone from GitHub ───────────────────────
     if !have_local_copy {
+        // Clean up any partial target before cloning
+        if target_dir.exists() { let _ = force_remove_dir(&target_dir); }
+
         let clone_url = format!("https://github.com/{}.git", repo);
         let target_str = target_dir.display().to_string();
 
         let (ok, output) = run_git(&["clone", "--depth=1", &clone_url, &target_str], None);
         if !ok {
-            // Try SSH URL as fallback
-            let ssh_url = format!("git@github.com:{}.git", repo);
-            let (ok2, output2) = run_git(&["clone", "--depth=1", &ssh_url, &target_str], None);
-            if !ok2 {
-                let _ = fs::remove_dir_all(&preview_dir);
-                return OpResult {
-                    success: false,
-                    message: format!(
-                        "Preview clone failed (plugin not installed locally either).\n\
-                         HTTPS: {}\nSSH: {}\n\
-                         Tip: Install the plugin first (Enter), then preview (p).",
-                        output, output2
-                    ),
-                };
+            // Clean up partial clone
+            if target_dir.exists() { let _ = force_remove_dir(&target_dir); }
+
+            // Try monorepo fallback for psmux-plugins/* etc.
+            let mono_result = clone_from_monorepo(repo, &target_dir);
+            let mono_ok = mono_result.as_ref().map(|r| r.success).unwrap_or(false);
+            let mono_err = mono_result.as_ref()
+                .filter(|r| !r.success)
+                .map(|r| r.message.clone());
+
+            if !mono_ok {
+                // Clean up any partial monorepo extraction
+                if target_dir.exists() { let _ = force_remove_dir(&target_dir); }
+
+                // Try SSH URL as last resort
+                let ssh_url = format!("git@github.com:{}.git", repo);
+                let (ok2, output2) = run_git(&["clone", "--depth=1", &ssh_url, &target_str], None);
+                if !ok2 {
+                    let _ = force_remove_dir(&preview_dir);
+
+                    // Build detailed error showing which step failed
+                    let mut detail = format!("HTTPS: {}", output);
+                    if let Some(me) = mono_err {
+                        detail.push_str(&format!(" | Monorepo: {}", me));
+                    }
+                    if let Some(ref ce) = copy_err {
+                        detail.push_str(&format!(" | Copy: {}", ce));
+                    }
+                    detail.push_str(&format!(" | SSH: {}", output2));
+
+                    return OpResult {
+                        success: false,
+                        message: format!(
+                            "Preview failed for '{}'. {}",
+                            plugin_name, detail
+                        ),
+                    };
+                }
             }
         }
     }
@@ -527,7 +763,7 @@ pub fn preview_plugin(
 
     let conf_content = conf_lines.join("\n") + "\n";
     if let Err(e) = fs::write(&conf_path, &conf_content) {
-        let _ = fs::remove_dir_all(&preview_dir);
+        let _ = force_remove_dir(&preview_dir);
         return OpResult {
             success: false,
             message: format!("Failed to write preview config: {}", e),
@@ -583,7 +819,7 @@ pub fn preview_plugin(
                 let _ = Command::new(&binary)
                     .args(["-L", "tppanel-preview", "kill-server"])
                     .output();
-                let _ = fs::remove_dir_all(&preview_dir);
+                let _ = force_remove_dir(&preview_dir);
                 return OpResult {
                     success: false,
                     message: format!(
@@ -593,7 +829,7 @@ pub fn preview_plugin(
                 };
             }
             Err(e) => {
-                let _ = fs::remove_dir_all(&preview_dir);
+                let _ = force_remove_dir(&preview_dir);
                 return OpResult {
                     success: false,
                     message: format!(
@@ -611,7 +847,7 @@ pub fn preview_plugin(
         .output();
 
     // Clean up temp files after session ends
-    let _ = fs::remove_dir_all(&preview_dir);
+    let _ = force_remove_dir(&preview_dir);
 
     OpResult {
         success: true,

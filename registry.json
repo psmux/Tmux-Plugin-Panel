@@ -324,7 +324,7 @@
     },
 
     {
-      "repo": "marlocarlo/psmux-plugins/ppm",
+      "repo": "psmux-plugins/ppm",
       "name": "ppm",
       "description": "PSMux Plugin Manager — install, update, and remove psmux plugins via PowerShell",
       "category": "essential",
@@ -332,7 +332,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-sensible",
+      "repo": "psmux-plugins/psmux-sensible",
       "name": "psmux-sensible",
       "description": "Universal sensible defaults for PSMux — escape-time, mouse, vi-mode, history",
       "category": "essential",
@@ -340,7 +340,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-pain-control",
+      "repo": "psmux-plugins/psmux-pain-control",
       "name": "psmux-pain-control",
       "description": "Vim-style pane navigation (h/j/k/l) and intuitive split bindings",
       "category": "navigation",
@@ -348,7 +348,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-battery",
+      "repo": "psmux-plugins/psmux-battery",
       "name": "psmux-battery",
       "description": "Battery percentage and icon in PSMux status bar — PowerShell native",
       "category": "statusbar",
@@ -356,7 +356,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-cpu",
+      "repo": "psmux-plugins/psmux-cpu",
       "name": "psmux-cpu",
       "description": "CPU and RAM usage in PSMux status bar — PowerShell native",
       "category": "statusbar",
@@ -364,7 +364,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-logging",
+      "repo": "psmux-plugins/psmux-logging",
       "name": "psmux-logging",
       "description": "Log pane output, take screenshots, save history — PowerShell edition",
       "category": "utility",
@@ -372,7 +372,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-resurrect",
+      "repo": "psmux-plugins/psmux-resurrect",
       "name": "psmux-resurrect",
       "description": "Persist and restore PSMux sessions across restarts",
       "category": "session",
@@ -380,7 +380,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-continuum",
+      "repo": "psmux-plugins/psmux-continuum",
       "name": "psmux-continuum",
       "description": "Continuous auto-save and restore of PSMux environment",
       "category": "session",
@@ -388,7 +388,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-sidebar",
+      "repo": "psmux-plugins/psmux-sidebar",
       "name": "psmux-sidebar",
       "description": "File tree sidebar with directory structure via PowerShell",
       "category": "utility",
@@ -396,7 +396,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-catppuccin",
+      "repo": "psmux-plugins/psmux-theme-catppuccin",
       "name": "Catppuccin (PSMux)",
       "description": "Soothing pastel theme — Mocha, Macchiato, Frappe, Latte — powerline separators & Nerd Font icons",
       "category": "theme",
@@ -404,7 +404,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-dracula",
+      "repo": "psmux-plugins/psmux-theme-dracula",
       "name": "Dracula (PSMux)",
       "description": "Dark Dracula theme — arrow/rounded/slanted separators, gradient status, Nerd Font icons",
       "category": "theme",
@@ -412,7 +412,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-gruvbox",
+      "repo": "psmux-plugins/psmux-theme-gruvbox",
       "name": "Gruvbox (PSMux)",
       "description": "Warm retro Gruvbox — dark/light, soft/medium/hard contrast, powerline separators & icons",
       "category": "theme",
@@ -420,7 +420,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-nord",
+      "repo": "psmux-plugins/psmux-theme-nord",
       "name": "Nord (PSMux)",
       "description": "Arctic north-bluish Nord — clean powerline with arrow/rounded separators & Nerd Font icons",
       "category": "theme",
@@ -428,7 +428,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-tokyonight",
+      "repo": "psmux-plugins/psmux-theme-tokyonight",
       "name": "Tokyo Night (PSMux)",
       "description": "Tokyo Night — night/storm/moon variants, shaped tabs, gradient status & Nerd Font icons",
       "category": "theme",
@@ -436,7 +436,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-rosepine",
+      "repo": "psmux-plugins/psmux-theme-rosepine",
       "name": "Rosé Pine (PSMux)",
       "description": "Soho vibes — main/moon/dawn variants, powerline separators, Nerd Font icons",
       "category": "theme",
@@ -444,7 +444,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-kanagawa",
+      "repo": "psmux-plugins/psmux-theme-kanagawa",
       "name": "Kanagawa (PSMux)",
       "description": "Japanese wave-inspired — wave/dragon/lotus variants, shaped tabs & gradient status",
       "category": "theme",
@@ -452,7 +452,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-everforest",
+      "repo": "psmux-plugins/psmux-theme-everforest",
       "name": "Everforest (PSMux)",
       "description": "Warm green nature-inspired — dark/light, soft/medium/hard contrast, powerline icons",
       "category": "theme",
@@ -460,7 +460,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-theme-onedark",
+      "repo": "psmux-plugins/psmux-theme-onedark",
       "name": "One Dark (PSMux)",
       "description": "Atom One Dark — powerline separators, Nerd Font icons, gradient status segments",
       "category": "theme",
@@ -468,7 +468,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-net-speed",
+      "repo": "psmux-plugins/psmux-net-speed",
       "name": "psmux-net-speed",
       "description": "Network upload/download speed in status bar — PowerShell native, color-coded thresholds",
       "category": "statusbar",
@@ -476,7 +476,7 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "marlocarlo/psmux-plugins/psmux-git-status",
+      "repo": "psmux-plugins/psmux-git-status",
       "name": "psmux-git-status",
       "description": "Git branch & status in status bar — branch name, dirty/clean, staged/modified/untracked counts",
       "category": "statusbar",

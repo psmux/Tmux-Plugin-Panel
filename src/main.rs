@@ -65,14 +65,45 @@ async fn run_app(
             break;
         }
 
-        // ── Handle preview: temporarily leave TUI ──────────────
-        if let Some((repo, cfg_clone, detected)) = app.preview_pending.take() {
+        // ── Handle preview: ensure plugin available, then launch ──
+        if let Some((repo, _cfg_clone, detected)) = app.preview_pending.take() {
+            // If the plugin directory doesn't exist on disk, install it first
+            // so preview_plugin() can copy from the local install.
+            let plugin_name = repo.split('/').last().unwrap_or(&repo);
+            let dir_exists = app.config.as_ref()
+                .map(|c| c.plugin_install_dir.join(plugin_name).is_dir())
+                .unwrap_or(false);
+
+            if !dir_exists {
+                app.set_status(&format!("Installing {} for preview…", repo));
+                terminal.draw(|f| ui::draw(f, app))?;
+
+                if let Some(ref mut cfg) = app.config {
+                    let r = plugins::install_plugin(&repo, cfg, None);
+                    if r.success {
+                        app.refresh_installed();
+                        app.refresh_themes();
+                        app.refresh_browse();
+                    }
+                    // If install fails, preview_plugin() will try its own
+                    // clone-to-temp-dir fallback — don't abort here.
+                }
+            }
+
+            let cfg_snapshot = match app.config {
+                Some(ref c) => c.clone(),
+                None => {
+                    app.set_status_err("No config file — press 'c' to create one first");
+                    continue;
+                }
+            };
+
             // Restore terminal for the preview subprocess
             disable_raw_mode()?;
             execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
             terminal.show_cursor()?;
 
-            let result = plugins::preview_plugin(&repo, &cfg_clone, &detected);
+            let result = plugins::preview_plugin(&repo, &cfg_snapshot, &detected);
 
             // Re-enter TUI
             enable_raw_mode()?;
