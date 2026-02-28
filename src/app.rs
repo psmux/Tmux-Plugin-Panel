@@ -117,6 +117,7 @@ pub enum Focus {
 pub enum ConfirmAction {
     RemovePlugin,
     InstallPlugin,
+    ActivateTheme,
     ResetEntireConfig,
     ResetAllSettings,
 }
@@ -180,6 +181,7 @@ pub struct App {
     pub installed_list: Vec<InstalledPlugin>,
     pub installed_selected: usize,
     pub installed_scroll_offset: usize,
+    pub active_theme: Option<String>, // repo of the currently active theme
 
 
     // ── Config/Settings tab ──────────────────────────
@@ -250,6 +252,7 @@ impl App {
             installed_list: Vec::new(),
             installed_selected: 0,
             installed_scroll_offset: 0,
+            active_theme: None,
 
             config_scroll_offset: 0,
             settings_list: Vec::new(),
@@ -287,6 +290,14 @@ impl App {
         self.all_configs = crate::config::find_configs();
         self.active_config_index = 0;
         self.config = self.all_configs.first().cloned();
+
+        // Auto-clean orphaned plugins (on disk but not in config)
+        if let Some(ref mut cfg) = self.config {
+            let orphans = crate::plugins::find_orphaned_plugins(cfg);
+            if !orphans.is_empty() {
+                let _ = crate::plugins::clean_orphaned_plugins(cfg);
+            }
+        }
 
         self.refresh_installed();
         self.refresh_settings();
@@ -351,7 +362,43 @@ impl App {
                 .iter()
                 .filter_map(|p| p.repo.clone())
                 .collect();
+            // Also add short names so Browse tab can detect installed-by-name
+            for p in &self.installed_list {
+                if let Some(repo) = &p.repo {
+                    if let Some(short) = repo.split('/').last() {
+                        self.installed_repos.insert(short.to_string());
+                    }
+                }
+            }
+            // Detect active theme from config plugins
+            self.active_theme = self.detect_active_theme();
         }
+    }
+
+    /// Detect the currently active theme by checking installed theme plugins
+    /// that are also declared in the config file.
+    fn detect_active_theme(&self) -> Option<String> {
+        let registry = crate::registry::embedded_registry();
+        if let Some(cfg) = &self.config {
+            for plugin_entry in &cfg.plugins {
+                // Check if this config plugin is a theme
+                if let Some(rp) = registry.iter().find(|rp| rp.repo == plugin_entry.repo) {
+                    if rp.category == Category::Theme {
+                        return Some(rp.repo.clone());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Check if a repo is a theme plugin.
+    pub fn is_theme_plugin(&self, repo: &str) -> bool {
+        let registry = crate::registry::embedded_registry();
+        registry.iter()
+            .find(|rp| rp.repo == repo)
+            .map(|rp| rp.category == Category::Theme)
+            .unwrap_or(false)
     }
 
     pub fn refresh_settings(&mut self) {
@@ -450,7 +497,10 @@ impl App {
             Tab::Installed => self
                 .installed_list
                 .get(self.installed_selected)
-                .and_then(|p| p.repo.clone()),
+                .and_then(|p| {
+                    // Return repo if available; otherwise derive from name
+                    p.repo.clone().or_else(|| Some(p.name.clone()))
+                }),
             Tab::Config => None,
         }
     }

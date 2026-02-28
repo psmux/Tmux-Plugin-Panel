@@ -263,31 +263,28 @@ async fn handle_mouse_event(app: &mut App, mouse: crossterm::event::MouseEvent) 
                         if let Some(repo) = app.selected_repo() {
                             let is_installed = app.installed_repos.contains(&repo);
                             if is_installed {
-                                // Buttons: Update(2-12) Uninstall(14-27) Preview(29-39) README(41-51)
+                                // Buttons: Update(2-12) Uninstall(14-27) Preview(29-39) README(41-51) Activate(53-65)
                                 if relative_x >= 2 && relative_x < 13 {
-                                    // Update button
                                     handle_mouse_update(app, &repo);
                                 } else if relative_x >= 14 && relative_x < 28 {
-                                    // Uninstall button
                                     handle_mouse_uninstall(app, &repo);
                                 } else if relative_x >= 29 && relative_x < 40 {
-                                    // Preview button
                                     handle_mouse_preview(app, &repo);
-                                } else if relative_x >= 41 {
-                                    // README button
+                                } else if relative_x >= 41 && relative_x < 52 {
                                     handle_mouse_readme(app, &repo).await;
+                                } else if relative_x >= 53 && app.is_theme_plugin(&repo) {
+                                    handle_mouse_activate_theme(app, &repo);
                                 }
                             } else {
-                                // Buttons: Install(2-13) Preview(15-25) README(27-37)
+                                // Buttons: Install(2-13) Preview(15-25) README(27-37) Activate(39-51)
                                 if relative_x >= 2 && relative_x < 14 {
-                                    // Install button
                                     handle_mouse_install(app, &repo);
                                 } else if relative_x >= 15 && relative_x < 26 {
-                                    // Preview button
                                     handle_mouse_preview(app, &repo);
-                                } else if relative_x >= 27 {
-                                    // README button
+                                } else if relative_x >= 27 && relative_x < 38 {
                                     handle_mouse_readme(app, &repo).await;
+                                } else if relative_x >= 39 && app.is_theme_plugin(&repo) {
+                                    handle_mouse_activate_theme(app, &repo);
                                 }
                             }
                         }
@@ -395,6 +392,20 @@ fn handle_mouse_install(app: &mut App, repo: &str) {
         repo: repo.to_string(),
         action: app::ConfirmAction::InstallPlugin,
         confirm_selected: true, // default to Confirm for install
+    });
+}
+
+fn handle_mouse_activate_theme(app: &mut App, repo: &str) {
+    let name = repo.split('/').last().unwrap_or(repo).to_string();
+    app.confirm = Some(app::ConfirmDialog {
+        title: "Activate Theme".to_string(),
+        message: format!(
+            "Activate '{}' as your theme?\n\nThis will deactivate any other theme.",
+            name
+        ),
+        repo: repo.to_string(),
+        action: app::ConfirmAction::ActivateTheme,
+        confirm_selected: true,
     });
 }
 
@@ -513,6 +524,23 @@ async fn handle_confirm_input(app: &mut App, code: KeyCode) {
                         app.set_status(&format!("Installing {}...", repo));
                         if let Some(ref mut cfg) = app.config {
                             let result = plugins::install_plugin(&repo, cfg, None);
+                            if result.success {
+                                app.set_status(&result.message);
+                                app.refresh_installed();
+                                app.refresh_browse();
+                            } else {
+                                app.set_status_err(&result.message);
+                            }
+                        } else {
+                            app.set_status_err("No config file found. Press 'c' to create one.");
+                        }
+                    }
+                    app::ConfirmAction::ActivateTheme => {
+                        let repo = dialog.repo.clone();
+                        app.set_status(&format!("Activating theme {}...", repo));
+                        if let Some(ref mut cfg) = app.config {
+                            let detected = app.detected_muxes.clone();
+                            let result = plugins::activate_theme(&repo, cfg, &detected);
                             if result.success {
                                 app.set_status(&result.message);
                                 app.refresh_installed();
@@ -809,6 +837,29 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
             }
         }
 
+        // ── Activate theme (a) ──────────────────────────────
+        KeyCode::Char('a') => {
+            if matches!(app.tab, Tab::Browse | Tab::Installed) {
+                if let Some(repo) = app.selected_repo() {
+                    if app.is_theme_plugin(&repo) {
+                        let name = repo.split('/').last().unwrap_or(&repo).to_string();
+                        app.confirm = Some(app::ConfirmDialog {
+                            title: "Activate Theme".to_string(),
+                            message: format!(
+                                "Activate '{}' as your theme?\n\nThis will deactivate any other theme.",
+                                name
+                            ),
+                            repo,
+                            action: app::ConfirmAction::ActivateTheme,
+                            confirm_selected: true,
+                        });
+                    } else {
+                        app.set_status("Not a theme plugin — use 'a' on theme-category plugins");
+                    }
+                }
+            }
+        }
+
         // ── Reload tmux/psmux config (R) ──────────────
         KeyCode::Char('R') => {
             if let Some(ref cfg) = app.config {
@@ -1008,19 +1059,35 @@ async fn handle_enter(app: &mut App) {
                 app.detail_readme_loading = false;
             }
         } else {
-            // Not installed — install it
-            app.set_status(&format!("Installing {}...", repo));
-            if let Some(ref mut cfg) = app.config {
-                let result = plugins::install_plugin(&repo, cfg, None);
-                if result.success {
-                    app.set_status(&result.message);
-                    app.refresh_installed();
-                    app.refresh_browse();
+            // Not installed — install it (with compat check)
+            let compat_ok = {
+                let rp = app.get_registry_plugin(&repo);
+                if let (Some(rp), Some(filter)) = (rp, app.compat_filter) {
+                    rp.is_compatible(filter)
                 } else {
-                    app.set_status_err(&result.message);
+                    true // no registry info or no filter → allow
                 }
+            };
+            if !compat_ok {
+                let label = app.compat_filter.map(|c| c.label()).unwrap_or("your platform");
+                app.set_status_err(&format!(
+                    "'{}' is not compatible with {}. Toggle filter (f) to install anyway.",
+                    repo, label
+                ));
             } else {
-                app.set_status_err("No config file found. Press 'c' to create one.");
+                app.set_status(&format!("Installing {}...", repo));
+                if let Some(ref mut cfg) = app.config {
+                    let result = plugins::install_plugin(&repo, cfg, None);
+                    if result.success {
+                        app.set_status(&result.message);
+                        app.refresh_installed();
+                        app.refresh_browse();
+                    } else {
+                        app.set_status_err(&result.message);
+                    }
+                } else {
+                    app.set_status_err("No config file found. Press 'c' to create one.");
+                }
             }
         }
     }

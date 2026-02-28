@@ -601,12 +601,17 @@ fn draw_detail_panel(f: &mut Frame, area: Rect, app: &App) {
         ])
         .split(inner);
 
-    // Name
-    let name_line = Paragraph::new(Line::from(Span::styled(
-        format!("  {}", name),
-        Style::default().fg(ACCENT).bold(),
-    )))
-    .style(Style::default().bg(BG));
+    // Name + active theme badge
+    let is_active_theme = app.active_theme.as_deref() == Some(&repo);
+    let is_theme = app.is_theme_plugin(&repo);
+    let mut name_spans = vec![
+        Span::styled(format!("  {}", name), Style::default().fg(ACCENT).bold()),
+    ];
+    if is_active_theme {
+        name_spans.push(Span::styled("  ● ACTIVE", Style::default().fg(GREEN).bold()));
+    }
+    let name_line = Paragraph::new(Line::from(name_spans))
+        .style(Style::default().bg(BG));
     f.render_widget(name_line, layout[0]);
 
     // Repo
@@ -634,33 +639,47 @@ fn draw_detail_panel(f: &mut Frame, area: Rect, app: &App) {
 
     // Action buttons — clear, visible, styled
     let (action_line, shortcut_line) = if is_installed {
+        let mut btns = vec![
+            Span::styled("  ", Style::default().bg(BG)),
+            Span::styled(" ⟳ Update ", Style::default().fg(Color::Black).bg(YELLOW).bold()),
+            Span::styled("  ", Style::default().bg(BG)),
+            Span::styled(" ✕ Uninstall ", Style::default().fg(Color::White).bg(RED).bold()),
+            Span::styled("  ", Style::default().bg(BG)),
+            Span::styled(" ▶ Preview ", Style::default().fg(Color::Black).bg(BLUE).bold()),
+            Span::styled("  ", Style::default().bg(BG)),
+            Span::styled(" ⓘ README ", Style::default().fg(Color::Black).bg(Color::Cyan).bold()),
+        ];
+        let mut shortcuts_txt = "     u          x/d            p            Enter".to_string();
+        if is_theme && !is_active_theme {
+            btns.push(Span::styled("  ", Style::default().bg(BG)));
+            btns.push(Span::styled(" ★ Activate ", Style::default().fg(Color::Black).bg(Color::Rgb(255, 165, 0)).bold()));
+            shortcuts_txt.push_str("       a");
+        }
         (
+            Line::from(btns),
             Line::from(vec![
-                Span::styled("  ", Style::default().bg(BG)),
-                Span::styled(" ⟳ Update ", Style::default().fg(Color::Black).bg(YELLOW).bold()),
-                Span::styled("  ", Style::default().bg(BG)),
-                Span::styled(" ✕ Uninstall ", Style::default().fg(Color::White).bg(RED).bold()),
-                Span::styled("  ", Style::default().bg(BG)),
-                Span::styled(" ▶ Preview ", Style::default().fg(Color::Black).bg(BLUE).bold()),
-                Span::styled("  ", Style::default().bg(BG)),
-                Span::styled(" ⓘ README ", Style::default().fg(Color::Black).bg(Color::Cyan).bold()),
-            ]),
-            Line::from(vec![
-                Span::styled("     u          x/d            p            Enter", Style::default().fg(TEXT_DARK)),
+                Span::styled(shortcuts_txt, Style::default().fg(TEXT_DARK)),
             ]),
         )
     } else {
+        let mut btns = vec![
+            Span::styled("  ", Style::default().bg(BG)),
+            Span::styled(" ⬇ Install ", Style::default().fg(Color::Black).bg(GREEN).bold()),
+            Span::styled("  ", Style::default().bg(BG)),
+            Span::styled(" ▶ Preview ", Style::default().fg(Color::Black).bg(BLUE).bold()),
+            Span::styled("  ", Style::default().bg(BG)),
+            Span::styled(" ⓘ README ", Style::default().fg(Color::Black).bg(Color::Cyan).bold()),
+        ];
+        let mut shortcuts_txt = "    Enter         p            Enter(2nd)".to_string();
+        if is_theme {
+            btns.push(Span::styled("  ", Style::default().bg(BG)));
+            btns.push(Span::styled(" ★ Activate ", Style::default().fg(Color::Black).bg(Color::Rgb(255, 165, 0)).bold()));
+            shortcuts_txt.push_str("       a");
+        }
         (
+            Line::from(btns),
             Line::from(vec![
-                Span::styled("  ", Style::default().bg(BG)),
-                Span::styled(" ⬇ Install ", Style::default().fg(Color::Black).bg(GREEN).bold()),
-                Span::styled("  ", Style::default().bg(BG)),
-                Span::styled(" ▶ Preview ", Style::default().fg(Color::Black).bg(BLUE).bold()),
-                Span::styled("  ", Style::default().bg(BG)),
-                Span::styled(" ⓘ README ", Style::default().fg(Color::Black).bg(Color::Cyan).bold()),
-            ]),
-            Line::from(vec![
-                Span::styled("    Enter         p            Enter(2nd)", Style::default().fg(TEXT_DARK)),
+                Span::styled(shortcuts_txt, Style::default().fg(TEXT_DARK)),
             ]),
         )
     };
@@ -770,10 +789,18 @@ fn draw_installed_tab(f: &mut Frame, area: Rect, app: &mut App) {
                     Style::default().fg(TEXT).bold()
                 };
 
-                let line1 = Line::from(vec![
+                let is_active = p.repo.as_deref() == app.active_theme.as_deref()
+                    && app.active_theme.is_some();
+
+                let mut spans = vec![
                     Span::styled(format!(" {}", p.display_name()), name_style),
                     Span::styled(" ●", Style::default().fg(GREEN)),
-                ]);
+                ];
+                if is_active {
+                    spans.push(Span::styled(" ACTIVE", Style::default().fg(Color::Rgb(255, 165, 0)).bold()));
+                }
+
+                let line1 = Line::from(spans);
                 let line2 = Line::from(Span::styled(
                     format!(" {}", p.description()),
                     Style::default().fg(TEXT_DIM),
@@ -1247,6 +1274,8 @@ fn draw_footer(f: &mut Frame, area: Rect, _app: &App) {
         Span::styled(" Search ", label_style),
         Span::styled("f", key_style),
         Span::styled(" Filter ", label_style),
+        Span::styled("a", key_style),
+        Span::styled(" Activate ", label_style),
         Span::styled(" 🖱 Mouse", mouse_style),
         Span::styled(" ON ", mouse_style),
     ]);

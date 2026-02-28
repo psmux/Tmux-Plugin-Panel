@@ -249,8 +249,29 @@ pub fn scan_installed_plugins(config: &TmuxConfig) -> Vec<InstalledPlugin> {
             continue;
         }
 
+        // Skip monorepo parent directories (containers, not plugins themselves)
+        let is_monorepo_parent = MONOREPO_MAP.iter().any(|(prefix, _)| *prefix == name);
+        if is_monorepo_parent {
+            continue;
+        }
+
+        // Skip empty or content-less directories
+        if !dir_has_content(&path) {
+            continue;
+        }
+
         let remote_url = get_remote_url(&path);
         let repo = remote_url.as_deref().and_then(extract_repo_from_url);
+
+        // If no git remote, derive repo from directory name using registry.
+        // This handles monorepo-installed plugins that were copied without .git.
+        let repo = repo.or_else(|| {
+            let registry = crate::registry::embedded_registry();
+            registry.iter()
+                .find(|rp| rp.repo.split('/').last() == Some(name.as_str()))
+                .map(|rp| rp.repo.clone())
+        });
+
         // Defer expensive git calls — commit/branch are only needed on demand
         let commit = None;
         let branch = None;
@@ -677,18 +698,6 @@ pub fn preview_plugin(
     conf_lines.push("set -g base-index 1".to_string());
     conf_lines.push(String::new());
 
-    // Add plugin declaration
-    conf_lines.push(format!("set -g @plugin '{}'", repo));
-
-    // Set a fallback PREVIEW indicator (themes will override status-right with
-    // their own styling — this only shows if the theme doesn't touch it)
-    conf_lines.push(String::new());
-    conf_lines.push(format!(
-        "set -g status-right '#[fg=yellow,bold] PREVIEW: {} #[default]'",
-        plugin_name
-    ));
-    conf_lines.push(String::new());
-
     // ── Source plugin theme/settings ─────────────────────────────────
     //
     // psmux plugins use:  plugin.conf  (static set-g directives)
@@ -702,12 +711,14 @@ pub fn preview_plugin(
     //   4) search subdirs for .tmux/.ps1 scripts
 
     let plugin_conf = target_dir.join("plugin.conf");
+    let mut has_theme_source = false;
     if plugin_conf.exists() {
         // Static conf — source it directly (most reliable for psmux themes).
         // This contains all the set-g directives and works during config load
         // (unlike .ps1 scripts which call `psmux set -g` via the control port
         // that isn't ready during config parsing).
         conf_lines.push(format!("source-file '{}'", plugin_conf.display()));
+        has_theme_source = true;
     } else {
         // No plugin.conf — look for entry scripts (.tmux or .ps1)
         let entry_tmux = target_dir.join(format!("{}.tmux", plugin_name));
@@ -846,6 +857,15 @@ pub fn preview_plugin(
         }
     }
 
+    // If no theme/plugin.conf was sourced, add a fallback PREVIEW indicator
+    if !has_theme_source {
+        conf_lines.push(String::new());
+        conf_lines.push(format!(
+            "set -g status-right '#[fg=yellow,bold] PREVIEW: {} #[default]'",
+            plugin_name
+        ));
+    }
+
     let conf_content = conf_lines.join("\n") + "\n";
     if let Err(e) = fs::write(&conf_path, &conf_content) {
         let _ = force_remove_dir(&preview_dir);
@@ -972,4 +992,77 @@ pub fn clean_orphaned_plugins(config: &mut TmuxConfig) -> Vec<OpResult> {
             remove_plugin(repo, config)
         })
         .collect()
+}
+
+/// Activate a theme plugin: install it if needed, add to config, remove other
+/// theme plugins from config, and reload.
+pub fn activate_theme(
+    repo: &str,
+    config: &mut TmuxConfig,
+    detected: &[crate::detect::DetectedMux],
+) -> OpResult {
+    let registry = crate::registry::embedded_registry();
+
+    // Remove other theme plugins from the config (but don't uninstall their files)
+    let theme_repos: Vec<String> = registry.iter()
+        .filter(|rp| rp.category == crate::registry::Category::Theme && rp.repo != repo)
+        .map(|rp| rp.repo.clone())
+        .collect();
+    for tr in &theme_repos {
+        let _ = config::remove_plugin_from_config(config, tr);
+    }
+
+    // Install the theme if not already on disk
+    let plugin_name = repo.split('/').last().unwrap_or(repo);
+    let target_dir = config.plugin_install_dir.join(plugin_name);
+    if !target_dir.exists() || !dir_has_content(&target_dir) {
+        let result = install_plugin(repo, config, None);
+        if !result.success {
+            return result;
+        }
+    } else {
+        // Already on disk, just ensure it's in the config
+        let _ = config::add_plugin_to_config(config, repo, None);
+    }
+
+    // Also source-file the theme's plugin.conf directly in the config
+    // so it takes effect without needing run-shell
+    let plugin_conf = target_dir.join("plugin.conf");
+    if plugin_conf.exists() {
+        let source_line = format!("source-file '{}'", plugin_conf.display());
+        // Check if this source-file line already exists
+        let already_sourced = config.lines.iter().any(|l| {
+            let lt = l.trim();
+            lt == source_line || lt.contains(&plugin_conf.display().to_string())
+        });
+        if !already_sourced {
+            // Remove old theme source-file lines
+            for tr in &theme_repos {
+                let old_name = tr.split('/').last().unwrap_or(tr);
+                let old_dir = config.plugin_install_dir.join(old_name);
+                let old_conf = old_dir.join("plugin.conf");
+                config.lines.retain(|l| {
+                    let lt = l.trim();
+                    !lt.contains(&old_conf.display().to_string())
+                });
+            }
+            // Add new theme source line
+            config.lines.push(source_line);
+            // Write config back
+            let content = config.lines.join("\n") + "\n";
+            let _ = std::fs::write(&config.path, &content);
+        }
+    }
+
+    // Reload config
+    let reload = reload_config(config, detected);
+
+    OpResult {
+        success: true,
+        message: format!(
+            "Theme '{}' activated. {}",
+            plugin_name,
+            if reload.success { reload.message } else { "Restart mux to apply.".to_string() }
+        ),
+    }
 }
