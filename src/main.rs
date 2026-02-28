@@ -396,6 +396,11 @@ fn handle_mouse_install(app: &mut App, repo: &str) {
 }
 
 fn handle_mouse_activate_theme(app: &mut App, repo: &str) {
+    // Compat check: don't allow activating themes incompatible with current config
+    if let Some(err) = app.compat_error_message(repo) {
+        app.set_status_err(&err);
+        return;
+    }
     let name = repo.split('/').last().unwrap_or(repo).to_string();
     app.confirm = Some(app::ConfirmDialog {
         title: "Activate Theme".to_string(),
@@ -842,17 +847,22 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
             if matches!(app.tab, Tab::Browse | Tab::Installed) {
                 if let Some(repo) = app.selected_repo() {
                     if app.is_theme_plugin(&repo) {
-                        let name = repo.split('/').last().unwrap_or(&repo).to_string();
-                        app.confirm = Some(app::ConfirmDialog {
-                            title: "Activate Theme".to_string(),
-                            message: format!(
-                                "Activate '{}' as your theme?\n\nThis will deactivate any other theme.",
-                                name
-                            ),
-                            repo,
-                            action: app::ConfirmAction::ActivateTheme,
-                            confirm_selected: true,
-                        });
+                        // Compat check: don't allow activating incompatible themes
+                        if let Some(err) = app.compat_error_message(&repo) {
+                            app.set_status_err(&err);
+                        } else {
+                            let name = repo.split('/').last().unwrap_or(&repo).to_string();
+                            app.confirm = Some(app::ConfirmDialog {
+                                title: "Activate Theme".to_string(),
+                                message: format!(
+                                    "Activate '{}' as your theme?\n\nThis will deactivate any other theme.",
+                                    name
+                                ),
+                                repo,
+                                action: app::ConfirmAction::ActivateTheme,
+                                confirm_selected: true,
+                            });
+                        }
                     } else {
                         app.set_status("Not a theme plugin — use 'a' on theme-category plugins");
                     }

@@ -604,6 +604,7 @@ fn draw_detail_panel(f: &mut Frame, area: Rect, app: &App) {
     // Name + active theme badge
     let is_active_theme = app.active_theme.as_deref() == Some(&repo);
     let is_theme = app.is_theme_plugin(&repo);
+    let is_compat = app.is_plugin_compatible(&repo);
     let mut name_spans = vec![
         Span::styled(format!("  {}", name), Style::default().fg(ACCENT).bold()),
     ];
@@ -650,10 +651,13 @@ fn draw_detail_panel(f: &mut Frame, area: Rect, app: &App) {
             Span::styled(" ⓘ README ", Style::default().fg(Color::Black).bg(Color::Cyan).bold()),
         ];
         let mut shortcuts_txt = "     u          x/d            p            Enter".to_string();
-        if is_theme && !is_active_theme {
+        if is_theme && !is_active_theme && is_compat {
             btns.push(Span::styled("  ", Style::default().bg(BG)));
             btns.push(Span::styled(" ★ Activate ", Style::default().fg(Color::Black).bg(Color::Rgb(255, 165, 0)).bold()));
             shortcuts_txt.push_str("       a");
+        } else if is_theme && !is_active_theme && !is_compat {
+            btns.push(Span::styled("  ", Style::default().bg(BG)));
+            btns.push(Span::styled(" ✕ Incompatible ", Style::default().fg(Color::DarkGray).bg(Color::Rgb(60, 60, 60))));
         }
         (
             Line::from(btns),
@@ -671,10 +675,13 @@ fn draw_detail_panel(f: &mut Frame, area: Rect, app: &App) {
             Span::styled(" ⓘ README ", Style::default().fg(Color::Black).bg(Color::Cyan).bold()),
         ];
         let mut shortcuts_txt = "    Enter         p            Enter(2nd)".to_string();
-        if is_theme {
+        if is_theme && is_compat {
             btns.push(Span::styled("  ", Style::default().bg(BG)));
             btns.push(Span::styled(" ★ Activate ", Style::default().fg(Color::Black).bg(Color::Rgb(255, 165, 0)).bold()));
             shortcuts_txt.push_str("       a");
+        } else if is_theme && !is_compat {
+            btns.push(Span::styled("  ", Style::default().bg(BG)));
+            btns.push(Span::styled(" ✕ Incompatible ", Style::default().fg(Color::DarkGray).bg(Color::Rgb(60, 60, 60))));
         }
         (
             Line::from(btns),

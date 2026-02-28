@@ -1011,6 +1011,28 @@ pub fn activate_theme(
 ) -> OpResult {
     let registry = crate::registry::embedded_registry();
 
+    // ── Compat guard: block activating themes incompatible with the config type ──
+    let required_compat = if config.config_type == "psmux" {
+        crate::registry::Compat::PSMux
+    } else {
+        crate::registry::Compat::Tmux
+    };
+    if let Some(rp) = crate::registry::get_registry_plugin(registry, repo) {
+        if !rp.is_compatible(required_compat) {
+            let plugin_name = repo.split('/').last().unwrap_or(repo);
+            return OpResult {
+                success: false,
+                message: format!(
+                    "'{}' is {} only and not compatible with {}. Install a {} theme instead.",
+                    plugin_name,
+                    if config.config_type == "psmux" { "tmux" } else { "psmux" },
+                    config.type_label(),
+                    config.type_label(),
+                ),
+            };
+        }
+    }
+
     // Remove other theme plugins from the config AND their source-file lines
     // (but don't uninstall their files from disk — user can switch back)
     let theme_repos: Vec<String> = registry.iter()

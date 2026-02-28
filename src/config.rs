@@ -1210,6 +1210,83 @@ pub fn remove_plugin_from_config(config: &mut TmuxConfig, repo: &str) -> Result<
     Ok(true)
 }
 
+/// Repair missing activation lines for @plugin entries.
+///
+/// Scans the config for `set -g @plugin 'org/name'` entries that have no
+/// corresponding `source-file` or `run-shell` line referencing the plugin.
+/// For each such entry, generates the correct activation line based on
+/// what's on disk (plugin.conf → source-file, .ps1 → run-shell, .tmux → run-shell).
+///
+/// Only operates on non-TPM configs (psmux or configs without `run '~/.tmux/plugins/tpm/tpm'`).
+/// Returns the number of lines repaired.
+pub fn repair_missing_activation_lines(config: &mut TmuxConfig) -> usize {
+    // Only repair non-TPM configs. TPM handles activation via its run line.
+    if has_tpm_run_line(config) {
+        return 0;
+    }
+
+    let mut repaired = 0;
+
+    // For each plugin, check if there's an activation line
+    let plugin_names: Vec<(String, String)> = config.plugins.iter()
+        .map(|p| {
+            let short = p.repo.split('/').last().unwrap_or(&p.repo).to_string();
+            (p.repo.clone(), short)
+        })
+        .collect();
+
+    for (repo, plugin_name) in &plugin_names {
+        // Check if there's already an activation line for this plugin
+        let has_activation = config.lines.iter().any(|l| {
+            let lt = l.trim();
+            (lt.starts_with("source-file") || lt.starts_with("run-shell") || lt.starts_with("run "))
+                && lt.contains(plugin_name.as_str())
+        });
+
+        if has_activation {
+            continue;
+        }
+
+        // No activation line — generate one based on what's on disk
+        let plugin_dir = config.plugin_install_dir.join(plugin_name);
+        if !plugin_dir.is_dir() {
+            continue; // plugin not installed, nothing to repair
+        }
+
+        let plugin_conf = plugin_dir.join("plugin.conf");
+        let entry_ps1 = plugin_dir.join(format!("{}.ps1", plugin_name));
+        let entry_tmux = plugin_dir.join(format!("{}.tmux", plugin_name));
+
+        let activation_line = if config.config_type == "psmux" && plugin_conf.exists() {
+            format!("source-file '{}'", plugin_conf.display())
+        } else if config.config_type == "psmux" && entry_ps1.exists() {
+            format!("run-shell '{}'", entry_ps1.display())
+        } else if entry_tmux.exists() {
+            format!("run-shell '{}'", entry_tmux.display())
+        } else if entry_ps1.exists() {
+            format!("run-shell '{}'", entry_ps1.display())
+        } else {
+            continue; // no known entry point, skip
+        };
+
+        // Find the @plugin line for this repo and insert after it
+        let plugin_line_idx = config.lines.iter().position(|l| {
+            l.contains("@plugin") && l.contains(repo.as_str())
+        });
+
+        if let Some(idx) = plugin_line_idx {
+            config.lines.insert(idx + 1, activation_line);
+            repaired += 1;
+        }
+    }
+
+    if repaired > 0 {
+        let _ = write_config(config);
+    }
+
+    repaired
+}
+
 // ── Config creation ─────────────────────────────────────────────────────
 
 /// Create a new config file for the given multiplexer type.

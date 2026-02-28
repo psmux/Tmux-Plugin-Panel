@@ -305,6 +305,22 @@ impl App {
             }
         }
 
+        // Repair broken @plugin entries missing their activation lines
+        // (e.g. source-file for psmux themes, run-shell for scripts).
+        if let Some(ref mut cfg) = self.config {
+            let repaired = crate::config::repair_missing_activation_lines(cfg);
+            if repaired > 0 {
+                // Re-parse config to pick up the new lines
+                if let Ok(refreshed) = crate::config::parse_config(&cfg.path, &cfg.config_type) {
+                    *cfg = refreshed;
+                    // Also update the all_configs entry
+                    if self.active_config_index < self.all_configs.len() {
+                        self.all_configs[self.active_config_index] = cfg.clone();
+                    }
+                }
+            }
+        }
+
         self.refresh_installed();
         self.refresh_settings();
 
@@ -420,6 +436,39 @@ impl App {
             .find(|rp| rp.repo == repo || rp.repo.split('/').last() == Some(repo))
             .map(|rp| rp.category == Category::Theme)
             .unwrap_or(false)
+    }
+
+    /// Check if a plugin is compatible with the currently loaded config.
+    /// Returns true if the plugin is compatible or if we can't determine compat.
+    pub fn is_plugin_compatible(&self, repo: &str) -> bool {
+        let required = if let Some(ref cfg) = self.config {
+            if cfg.config_type == "psmux" {
+                Compat::PSMux
+            } else {
+                Compat::Tmux
+            }
+        } else {
+            return true; // no config = can't judge
+        };
+        if let Some(rp) = self.get_registry_plugin(repo) {
+            rp.is_compatible(required)
+        } else {
+            true // not in registry = assume compatible
+        }
+    }
+
+    /// Get incompatibility reason string, or None if compatible.
+    pub fn compat_error_message(&self, repo: &str) -> Option<String> {
+        if self.is_plugin_compatible(repo) {
+            return None;
+        }
+        let cfg = self.config.as_ref()?;
+        let plugin_name = repo.split('/').last().unwrap_or(repo);
+        let other = if cfg.config_type == "psmux" { "tmux" } else { "psmux" };
+        Some(format!(
+            "'{}' is {}-only and not compatible with {}.",
+            plugin_name, other, cfg.type_label(),
+        ))
     }
 
     pub fn refresh_settings(&mut self) {
