@@ -712,32 +712,66 @@ pub fn preview_plugin(
         // No plugin.conf — look for entry scripts (.tmux or .ps1)
         let entry_tmux = target_dir.join(format!("{}.tmux", plugin_name));
         let entry_ps1 = target_dir.join(format!("{}.ps1", plugin_name));
-        if entry_tmux.exists() {
-            conf_lines.push(format!("run-shell '{}'", entry_tmux.display()));
-        } else if entry_ps1.exists() {
-            // psmux PowerShell plugin entry point
-            conf_lines.push(format!("run-shell '{}'", entry_ps1.display()));
-        } else {
-            // Search for any .tmux or .ps1 in plugin root and subdirs
-            let mut found_entry = false;
-            if let Ok(entries) = fs::read_dir(&target_dir) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.is_file() {
-                        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-                        if ext == "tmux" {
-                            conf_lines.push(format!("run-shell '{}'", p.display()));
-                            found_entry = true;
-                            break;
-                        } else if ext == "ps1" {
-                            conf_lines.push(format!("run-shell '{}'", p.display()));
-                            found_entry = true;
-                            break;
+
+        // For psmux on Windows, .tmux files (bash scripts) can't be executed
+        // via run-shell (pwsh can't run bash). Instead, parse the .tmux file
+        // for `tmux source` commands and emit `source-file` directives, or
+        // directly find and source .conf files from the plugin directory.
+        if kind == crate::detect::MuxKind::PSMux {
+            // Strategy for psmux: prefer sourcing .conf files directly, or
+            // parse .tmux scripts for source commands.
+            let mut sourced = false;
+
+            // If there's a .tmux entry script, parse it for source commands
+            if entry_tmux.exists() {
+                if let Ok(script_content) = fs::read_to_string(&entry_tmux) {
+                    for script_line in script_content.lines() {
+                        let sl = script_line.trim();
+                        // Look for: tmux source "path" or tmux source-file "path"
+                        if sl.starts_with("tmux source-file ") || sl.starts_with("tmux source ") {
+                            let path_part = sl.splitn(3, ' ').nth(2).unwrap_or("").trim();
+                            // Expand $PLUGIN_DIR and ${PLUGIN_DIR}
+                            let expanded = path_part
+                                .trim_matches('"').trim_matches('\'')
+                                .replace("${PLUGIN_DIR}", &target_dir.display().to_string())
+                                .replace("$PLUGIN_DIR", &target_dir.display().to_string());
+                            let conf_p = std::path::Path::new(&expanded);
+                            if conf_p.is_file() {
+                                conf_lines.push(format!("source-file '{}'", expanded));
+                                sourced = true;
+                            }
                         }
                     }
                 }
             }
-            if !found_entry {
+
+            // Fallback: find and source any .conf files in the plugin directory
+            if !sourced {
+                let mut conf_files: Vec<String> = Vec::new();
+                if let Ok(entries) = fs::read_dir(&target_dir) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if p.is_file() {
+                            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                            if ext == "conf" {
+                                conf_files.push(p.display().to_string());
+                            }
+                        }
+                    }
+                }
+                // Sort so options files come before main files
+                conf_files.sort();
+                for cf in &conf_files {
+                    conf_lines.push(format!("source-file '{}'", cf));
+                    sourced = true;
+                }
+            }
+
+            // Last resort: try .ps1 entry script
+            if !sourced && entry_ps1.exists() {
+                conf_lines.push(format!("run-shell '{}'", entry_ps1.display()));
+            } else if !sourced {
+                // Search subdirectories for .ps1 or .conf files
                 for subdir in &["scripts", "plugin", "src"] {
                     let sub = target_dir.join(subdir);
                     if sub.is_dir() {
@@ -746,16 +780,67 @@ pub fn preview_plugin(
                                 let p = entry.path();
                                 if p.is_file() {
                                     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-                                    if ext == "tmux" || ext == "ps1" {
+                                    if ext == "ps1" {
                                         conf_lines.push(format!("run-shell '{}'", p.display()));
-                                        found_entry = true;
+                                        sourced = true;
+                                        break;
+                                    } else if ext == "conf" {
+                                        conf_lines.push(format!("source-file '{}'", p.display()));
+                                        sourced = true;
                                         break;
                                     }
                                 }
                             }
                         }
                     }
-                    if found_entry { break; }
+                    if sourced { break; }
+                }
+            }
+        } else {
+            // tmux mode — use run-shell as before (bash scripts work on Linux/macOS)
+            if entry_tmux.exists() {
+                conf_lines.push(format!("run-shell '{}'", entry_tmux.display()));
+            } else if entry_ps1.exists() {
+                conf_lines.push(format!("run-shell '{}'", entry_ps1.display()));
+            } else {
+                let mut found_entry = false;
+                if let Ok(entries) = fs::read_dir(&target_dir) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if p.is_file() {
+                            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                            if ext == "tmux" {
+                                conf_lines.push(format!("run-shell '{}'", p.display()));
+                                found_entry = true;
+                                break;
+                            } else if ext == "ps1" {
+                                conf_lines.push(format!("run-shell '{}'", p.display()));
+                                found_entry = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !found_entry {
+                    for subdir in &["scripts", "plugin", "src"] {
+                        let sub = target_dir.join(subdir);
+                        if sub.is_dir() {
+                            if let Ok(entries) = fs::read_dir(&sub) {
+                                for entry in entries.flatten() {
+                                    let p = entry.path();
+                                    if p.is_file() {
+                                        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                                        if ext == "tmux" || ext == "ps1" {
+                                            conf_lines.push(format!("run-shell '{}'", p.display()));
+                                            found_entry = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if found_entry { break; }
+                    }
                 }
             }
         }
