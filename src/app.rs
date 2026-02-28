@@ -11,6 +11,7 @@ use crate::themes::ThemeInfo;
 /// Which tab is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
+    Dashboard,
     Browse,
     Installed,
     Themes,
@@ -19,6 +20,7 @@ pub enum Tab {
 
 impl Tab {
     pub const ALL: &'static [Tab] = &[
+        Tab::Dashboard,
         Tab::Browse,
         Tab::Installed,
         Tab::Themes,
@@ -27,6 +29,7 @@ impl Tab {
 
     pub fn label(&self) -> &'static str {
         match self {
+            Tab::Dashboard => " ⌂ Home ",
             Tab::Browse => " Browse ",
             Tab::Installed => " Installed ",
             Tab::Themes => " Themes ",
@@ -36,20 +39,72 @@ impl Tab {
 
     pub fn index(&self) -> usize {
         match self {
-            Tab::Browse => 0,
-            Tab::Installed => 1,
-            Tab::Themes => 2,
-            Tab::Config => 3,
+            Tab::Dashboard => 0,
+            Tab::Browse => 1,
+            Tab::Installed => 2,
+            Tab::Themes => 3,
+            Tab::Config => 4,
         }
     }
 
     pub fn from_index(i: usize) -> Tab {
         match i {
-            0 => Tab::Browse,
-            1 => Tab::Installed,
-            2 => Tab::Themes,
-            3 => Tab::Config,
-            _ => Tab::Browse,
+            0 => Tab::Dashboard,
+            1 => Tab::Browse,
+            2 => Tab::Installed,
+            3 => Tab::Themes,
+            4 => Tab::Config,
+            _ => Tab::Dashboard,
+        }
+    }
+}
+
+/// Dashboard quick-action items.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DashboardItem {
+    BrowsePlugins,
+    BrowseThemes,
+    ConfigureSettings,
+    ResetToDefaults,
+    ManageRegistries,
+}
+
+impl DashboardItem {
+    pub const ALL: &'static [DashboardItem] = &[
+        DashboardItem::BrowsePlugins,
+        DashboardItem::BrowseThemes,
+        DashboardItem::ConfigureSettings,
+        DashboardItem::ResetToDefaults,
+        DashboardItem::ManageRegistries,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            DashboardItem::BrowsePlugins => "Browse & Install Plugins",
+            DashboardItem::BrowseThemes => "Browse & Install Themes",
+            DashboardItem::ConfigureSettings => "Configure Settings",
+            DashboardItem::ResetToDefaults => "Reset to Defaults",
+            DashboardItem::ManageRegistries => "Manage Plugin Sources",
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match self {
+            DashboardItem::BrowsePlugins => "📦",
+            DashboardItem::BrowseThemes => "🎨",
+            DashboardItem::ConfigureSettings => "⚙",
+            DashboardItem::ResetToDefaults => "🔄",
+            DashboardItem::ManageRegistries => "📋",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            DashboardItem::BrowsePlugins => "Search, discover, and install plugins from the registry",
+            DashboardItem::BrowseThemes => "Preview and apply beautiful themes to your terminal",
+            DashboardItem::ConfigureSettings => "Toggle mouse, status bar, prefix key, and more",
+            DashboardItem::ResetToDefaults => "Restore all settings to factory defaults",
+            DashboardItem::ManageRegistries => "Add or remove plugin repository sources",
         }
     }
 }
@@ -144,6 +199,9 @@ pub struct App {
     pub status: StatusMessage,
     pub installed_repos: std::collections::HashSet<String>,
 
+    // ── Dashboard tab ────────────────────────────────
+    pub dashboard_selected: usize,
+
     // ── Preview pending (repo, config_clone, detected_muxes) ────
     pub preview_pending: Option<(String, crate::config::TmuxConfig, Vec<crate::detect::DetectedMux>)>,
 }
@@ -164,7 +222,7 @@ impl App {
 
         App {
             running: true,
-            tab: Tab::Browse,
+            tab: Tab::Dashboard,
             focus: Focus::List,
             config: None,
 
@@ -205,8 +263,10 @@ impl App {
             detail_scroll_offset: 0,
 
             confirm: None,
+            dashboard_selected: 0,
+
             status: StatusMessage {
-                text: "Ready — press ? for help".to_string(),
+                text: "Welcome! Navigate with ↑↓ and press Enter to get started.".to_string(),
                 is_error: false,
             },
             installed_repos: std::collections::HashSet::new(),
@@ -391,6 +451,7 @@ impl App {
     /// Get the repo string for the currently selected item in the active tab.
     pub fn selected_repo(&self) -> Option<String> {
         match self.tab {
+            Tab::Dashboard => None,
             Tab::Browse => self
                 .browse_list
                 .get(self.browse_selected)
@@ -416,6 +477,7 @@ impl App {
     /// Current list length for the active tab.
     pub fn current_list_len(&self) -> usize {
         match self.tab {
+            Tab::Dashboard => DashboardItem::ALL.len(),
             Tab::Browse => self.browse_list.len(),
             Tab::Installed => self.installed_list.len(),
             Tab::Themes => self.themes_list.len(),
@@ -426,6 +488,7 @@ impl App {
     /// Current selected index (mutable reference).
     pub fn selected_mut(&mut self) -> &mut usize {
         match self.tab {
+            Tab::Dashboard => &mut self.dashboard_selected,
             Tab::Browse => &mut self.browse_selected,
             Tab::Installed => &mut self.installed_selected,
             Tab::Themes => &mut self.themes_selected,
@@ -435,6 +498,7 @@ impl App {
 
     pub fn scroll_offset_mut(&mut self) -> &mut usize {
         match self.tab {
+            Tab::Dashboard => &mut self.dashboard_selected, // no scrolling needed
             Tab::Browse => &mut self.browse_scroll_offset,
             Tab::Installed => &mut self.installed_scroll_offset,
             Tab::Themes => &mut self.themes_scroll_offset,
@@ -442,14 +506,139 @@ impl App {
         }
     }
 
+    /// Move the selected index. Single-step (±1) wraps around;
+    /// multi-step (page up/down) clamps at boundaries.
     pub fn move_selection(&mut self, delta: isize) {
         let len = self.current_list_len();
         if len == 0 {
             return;
         }
         let sel = self.selected_mut();
-        let new = (*sel as isize + delta).max(0).min(len as isize - 1) as usize;
-        *sel = new;
+        if delta == 1 || delta == -1 {
+            // Wrap around for single-step navigation
+            let new = ((*sel as isize + delta) % len as isize + len as isize) % len as isize;
+            *sel = new as usize;
+        } else {
+            // Clamp for multi-step (page up/down)
+            let new = (*sel as isize + delta).max(0).min(len as isize - 1) as usize;
+            *sel = new;
+        }
         self.detail_scroll_offset = 0;
+    }
+}
+
+// ── Unit Tests ──────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tab_index_roundtrip() {
+        for (i, tab) in Tab::ALL.iter().enumerate() {
+            assert_eq!(tab.index(), i);
+            assert_eq!(Tab::from_index(i), *tab);
+        }
+    }
+
+    #[test]
+    fn test_tab_from_index_out_of_bounds() {
+        assert_eq!(Tab::from_index(99), Tab::Dashboard);
+    }
+
+    #[test]
+    fn test_dashboard_items_count() {
+        assert_eq!(DashboardItem::ALL.len(), 5);
+    }
+
+    #[test]
+    fn test_move_selection_wraps_forward() {
+        let mut app = App::new();
+        app.tab = Tab::Dashboard; // 5 items
+        app.dashboard_selected = 4; // last item
+        app.move_selection(1);
+        assert_eq!(app.dashboard_selected, 0); // wraps to first
+    }
+
+    #[test]
+    fn test_move_selection_wraps_backward() {
+        let mut app = App::new();
+        app.tab = Tab::Dashboard;
+        app.dashboard_selected = 0; // first item
+        app.move_selection(-1);
+        assert_eq!(app.dashboard_selected, 4); // wraps to last
+    }
+
+    #[test]
+    fn test_move_selection_normal_forward() {
+        let mut app = App::new();
+        app.tab = Tab::Dashboard;
+        app.dashboard_selected = 1;
+        app.move_selection(1);
+        assert_eq!(app.dashboard_selected, 2);
+    }
+
+    #[test]
+    fn test_move_selection_normal_backward() {
+        let mut app = App::new();
+        app.tab = Tab::Dashboard;
+        app.dashboard_selected = 2;
+        app.move_selection(-1);
+        assert_eq!(app.dashboard_selected, 1);
+    }
+
+    #[test]
+    fn test_move_selection_page_clamps_top() {
+        let mut app = App::new();
+        app.tab = Tab::Dashboard;
+        app.dashboard_selected = 1;
+        app.move_selection(-10); // page up
+        assert_eq!(app.dashboard_selected, 0); // clamps, doesn't wrap
+    }
+
+    #[test]
+    fn test_move_selection_page_clamps_bottom() {
+        let mut app = App::new();
+        app.tab = Tab::Dashboard;
+        app.dashboard_selected = 3;
+        app.move_selection(10); // page down
+        assert_eq!(app.dashboard_selected, 4); // clamps to last
+    }
+
+    #[test]
+    fn test_move_selection_empty_list() {
+        let mut app = App::new();
+        app.tab = Tab::Installed; // no plugins installed
+        app.installed_selected = 0;
+        app.move_selection(1); // should not panic
+        assert_eq!(app.installed_selected, 0);
+    }
+
+    #[test]
+    fn test_initial_tab_is_dashboard() {
+        let app = App::new();
+        assert_eq!(app.tab, Tab::Dashboard);
+    }
+
+    #[test]
+    fn test_status_message_default() {
+        let app = App::new();
+        assert!(!app.status.is_error);
+    }
+
+    #[test]
+    fn test_set_status() {
+        let mut app = App::new();
+        app.set_status("hello");
+        assert_eq!(app.status.text, "hello");
+        assert!(!app.status.is_error);
+    }
+
+    #[test]
+    fn test_set_status_err() {
+        let mut app = App::new();
+        app.set_status_err("fail");
+        assert_eq!(app.status.text, "fail");
+        assert!(app.status.is_error);
     }
 }

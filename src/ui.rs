@@ -80,6 +80,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_tabs(f, outer[2], app);
 
     match app.tab {
+        Tab::Dashboard => draw_dashboard_tab(f, outer[3], app),
         Tab::Browse => draw_browse_tab(f, outer[3], app),
         Tab::Installed => draw_installed_tab(f, outer[3], app),
         Tab::Themes => draw_themes_tab(f, outer[3], app),
@@ -167,6 +168,197 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
                 .style(Style::default().bg(BG_DARK)),
         );
     f.render_widget(tabs, area);
+}
+
+// ── Dashboard tab ───────────────────────────────────────────────────────
+
+fn draw_dashboard_tab(f: &mut Frame, area: Rect, app: &App) {
+    use crate::app::DashboardItem;
+
+    let block = Block::default()
+        .borders(Borders::NONE)
+        .style(Style::default().bg(BG));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // Split: left(info panel) | center(action cards) | right(quick ref)
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(40),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+
+    let center = cols[1];
+
+    // Vertical layout: welcome | cards | system info | tips
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4),   // welcome banner
+            Constraint::Length(1),   // spacer
+            Constraint::Min(12),    // action cards
+            Constraint::Length(1),   // spacer
+            Constraint::Length(6),   // system info
+            Constraint::Length(3),   // quick reference
+        ])
+        .split(center);
+
+    // ── Welcome banner ────────────────────────────────
+    let welcome_lines = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Welcome to ", Style::default().fg(TEXT)),
+            Span::styled("Tmux Plugin Panel", Style::default().fg(ACCENT).bold()),
+            Span::styled(" — your all-in-one app store", Style::default().fg(TEXT)),
+        ]),
+        Line::from(Span::styled(
+            "  Browse plugins, apply themes, configure settings, and reset to defaults.",
+            Style::default().fg(TEXT_DIM),
+        )),
+    ];
+    let welcome = Paragraph::new(welcome_lines).style(Style::default().bg(BG));
+    f.render_widget(welcome, rows[0]);
+
+    // ── Action cards ──────────────────────────────────
+    let cards_area = rows[2];
+    let items: Vec<ListItem> = DashboardItem::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let is_sel = i == app.dashboard_selected;
+            let bg = if is_sel { BG_HIGHLIGHT } else { BG_LIGHT };
+
+            let icon_style = if is_sel {
+                Style::default().fg(ACCENT2).bold()
+            } else {
+                Style::default().fg(ACCENT)
+            };
+            let label_style = if is_sel {
+                Style::default().fg(ACCENT2).bold()
+            } else {
+                Style::default().fg(TEXT).bold()
+            };
+            let desc_style = Style::default().fg(TEXT_DIM);
+
+            let pointer = if is_sel { "▶ " } else { "  " };
+            let pointer_style = if is_sel {
+                Style::default().fg(ACCENT2).bold()
+            } else {
+                Style::default().fg(TEXT_DARK)
+            };
+
+            let line1 = Line::from(vec![
+                Span::styled(pointer, pointer_style),
+                Span::styled(format!("{}  ", item.icon()), icon_style),
+                Span::styled(item.label(), label_style),
+            ]);
+            let line2 = Line::from(vec![
+                Span::styled("     ", Style::default()),
+                Span::styled(item.description(), desc_style),
+            ]);
+
+            ListItem::new(vec![line1, line2]).style(Style::default().bg(bg))
+        })
+        .collect();
+
+    let cards = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(TEXT_DARK))
+                .title(Span::styled(" Quick Actions ", Style::default().fg(ACCENT).bold()))
+                .style(Style::default().bg(BG)),
+        );
+    f.render_widget(cards, cards_area);
+
+    // ── System info ───────────────────────────────────
+    let mut info_lines: Vec<Line> = Vec::new();
+
+    // Multiplexer info
+    if !app.detected_muxes.is_empty() {
+        let mux_info: String = app
+            .detected_muxes
+            .iter()
+            .map(|m| format!("{} v{}", m.name, m.version))
+            .collect::<Vec<_>>()
+            .join("  ·  ");
+        info_lines.push(Line::from(vec![
+            Span::styled("  System: ", Style::default().fg(TEXT_DIM)),
+            Span::styled(mux_info, Style::default().fg(GREEN)),
+        ]));
+    } else {
+        info_lines.push(Line::from(Span::styled(
+            "  System: No multiplexer detected — install tmux or PSMux",
+            Style::default().fg(YELLOW),
+        )));
+    }
+
+    // Config info
+    if let Some(cfg) = &app.config {
+        info_lines.push(Line::from(vec![
+            Span::styled("  Config: ", Style::default().fg(TEXT_DIM)),
+            Span::styled(
+                format!("[{}] {}", cfg.type_label(), cfg.display_path()),
+                Style::default().fg(TEXT),
+            ),
+            Span::styled(
+                format!("  ·  {} plugins installed", cfg.plugins.len()),
+                Style::default().fg(GREEN),
+            ),
+        ]));
+    } else {
+        info_lines.push(Line::from(Span::styled(
+            "  Config: None found — select 'Configure Settings' to create one",
+            Style::default().fg(YELLOW),
+        )));
+    }
+
+    // Registry info
+    info_lines.push(Line::from(vec![
+        Span::styled("  Registry: ", Style::default().fg(TEXT_DIM)),
+        Span::styled(
+            format!("{} plugins available", app.registry.len()),
+            Style::default().fg(TEXT),
+        ),
+        Span::styled(
+            format!("  ·  {} shown with current filter", app.browse_list.len()),
+            Style::default().fg(TEXT_DIM),
+        ),
+    ]));
+
+    let info_block = Paragraph::new(info_lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(TEXT_DARK))
+                .title(Span::styled(" System Info ", Style::default().fg(ACCENT).bold()))
+                .style(Style::default().bg(BG)),
+        );
+    f.render_widget(info_block, rows[4]);
+
+    // ── Quick reference ───────────────────────────────
+    let quick_ref = Paragraph::new(vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ↑↓", Style::default().fg(ACCENT).bold()),
+            Span::styled(" Navigate   ", Style::default().fg(TEXT_DIM)),
+            Span::styled("Enter", Style::default().fg(ACCENT).bold()),
+            Span::styled(" Select   ", Style::default().fg(TEXT_DIM)),
+            Span::styled("Tab", Style::default().fg(ACCENT).bold()),
+            Span::styled(" Switch Tab   ", Style::default().fg(TEXT_DIM)),
+            Span::styled("q", Style::default().fg(ACCENT).bold()),
+            Span::styled(" Quit   ", Style::default().fg(TEXT_DIM)),
+            Span::styled("?", Style::default().fg(ACCENT).bold()),
+            Span::styled(" Help", Style::default().fg(TEXT_DIM)),
+        ]),
+    ])
+    .style(Style::default().bg(BG));
+    f.render_widget(quick_ref, rows[5]);
 }
 
 // ── Browse tab ──────────────────────────────────────────────────────────

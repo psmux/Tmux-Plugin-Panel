@@ -38,10 +38,11 @@
 
 | Tab | What it does |
 |-----|-------------|
+| **⌂ Dashboard** | Quick-action cards for common tasks. Browse plugins, themes, configure settings, reset to defaults, manage registries. |
 | **Browse** | Category sidebar + plugin list + detail panel. Search, filter by compat, install with Enter. |
 | **Installed** | See all installed plugins. Update one (`u`), update all (`U`), remove (`x`), clean orphans (`C`). |
 | **Themes** | Dedicated gallery for tmux themes. Install, activate, switch — one keypress. |
-| **Config** | Full settings editor. Toggle booleans, cycle choices, edit values inline. Grouped by category. |
+| **Config** | Full settings editor. Toggle booleans, cycle choices, edit values inline. Grouped by category. Reset individual settings or factory reset. |
 
 ## Quick Start
 
@@ -83,10 +84,10 @@ tppanel
 |-----|--------|
 | `q` | Quit |
 | `Tab` / `Shift+Tab` | Switch tabs |
-| `1`–`4` | Jump to tab |
-| `↑` `↓` / `j` `k` | Navigate list |
+| `1`–`5` | Jump to tab (1=Dashboard, 2=Browse, 3=Installed, 4=Themes, 5=Config) |
+| `↑` `↓` / `j` `k` | Navigate list (wraps around) |
 | `←` `→` / `h` `l` | Switch category (Browse) / settings group (Config) |
-| `Enter` | Install plugin / toggle setting / fetch README |
+| `Enter` | Install plugin / toggle setting / dashboard action |
 | `x` / `d` | Remove plugin (with confirmation) |
 | `u` | Update selected plugin |
 | `U` | Update **all** plugins |
@@ -96,6 +97,10 @@ tppanel
 | `r` | Rescan config |
 | `R` | Reload tmux config (`tmux source-file`) |
 | `c` | Create config / cycle configs |
+| `Backspace` | Reset single setting to default (Config tab) |
+| `D` | Reset all settings to defaults (Config tab) |
+| `Ctrl+D` | Factory reset entire config (Config tab) |
+| `p` | Preview plugin/theme |
 | `J` / `K` | Scroll README detail |
 | `?` | Show help |
 
@@ -104,12 +109,12 @@ tppanel
 ```
 src/
 ├── main.rs      # Entry point, terminal setup, event loop
-├── app.rs       # Application state machine (tabs, selections, data)
-├── ui.rs        # TUI rendering with ratatui (all 4 tabs + overlays)
-├── registry.rs  # Plugin registry — remote fetch, local cache, embedded fallback
+├── app.rs       # Application state machine (5 tabs, selections, data)
+├── ui.rs        # TUI rendering with ratatui (dashboard + 4 tabs + overlays)
+├── registry.rs  # Plugin registry — embedded + external sources, search/filter
 ├── plugins.rs   # Git-based install/remove/update engine
 ├── themes.rs    # Theme management (install, activate, switch)
-├── config.rs    # tmux.conf / psmux.conf parser & editor
+├── config.rs    # tmux.conf / psmux.conf parser, editor & factory reset
 ├── detect.rs    # Auto-detection of tmux/PSMux binaries & configs
 └── github.rs    # GitHub API client for search & repo info
 ```
@@ -130,7 +135,9 @@ The registry is fetched from GitHub on startup and cached locally. An embedded c
 
 ### Custom Registry
 
-Point **Tmux Plugin Panel** at your own registry by hosting a JSON file matching the schema in `registry.json` and modifying the `REGISTRY_URL` constant.
+You can extend the built-in registry by adding external sources (local JSON files or remote URLs). See [REGISTRY_FORMAT.md](REGISTRY_FORMAT.md) for the full schema and setup instructions.
+
+Registry sources are configured in `~/.config/tppanel/registry_sources.json`.
 
 ## Tech Stack
 

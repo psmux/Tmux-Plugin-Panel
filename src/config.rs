@@ -150,7 +150,19 @@ impl ConfigSetting {
 }
 
 /// Well-known tmux/psmux settings with descriptions.
-fn known_settings() -> Vec<ConfigSetting> {
+/// `config_type` adjusts defaults to match the actual multiplexer.
+fn known_settings_for(config_type: &str) -> Vec<ConfigSetting> {
+    let is_psmux = config_type == "psmux";
+
+    // PSMux vs tmux default differences (from psmux/src/types.rs vs tmux options-table.c):
+    //   mouse:        PSMux=on,  tmux=off
+    //   set-clipboard: PSMux=on, tmux=external
+    //   plugin dir:   PSMux=~/.psmux/plugins, tmux=~/.tmux/plugins
+
+    let mouse_default = if is_psmux { "on" } else { "off" };
+    let clipboard_default = if is_psmux { "on" } else { "external" };
+    let plugin_dir_default = if is_psmux { "~/.psmux/plugins" } else { "~/.tmux/plugins" };
+
     vec![
         // ── General ─────────────────────────────────────
         ConfigSetting {
@@ -223,7 +235,7 @@ fn known_settings() -> Vec<ConfigSetting> {
             description: "Use terminal clipboard (OSC 52) for copy/paste".into(),
             category: SettingCategory::General,
             stype: SettingType::Choice,
-            value: String::new(), default: "external".into(),
+            value: String::new(), default: clipboard_default.into(),
             choices: vec!["on".into(), "external".into(), "off".into()],
             line_number: None,
         },
@@ -309,7 +321,7 @@ fn known_settings() -> Vec<ConfigSetting> {
             description: "Enable mouse for selecting panes, resizing, and scrolling".into(),
             category: SettingCategory::Mouse,
             stype: SettingType::Bool,
-            value: String::new(), default: "off".into(),
+            value: String::new(), default: mouse_default.into(),
             choices: vec![], line_number: None,
         },
 
@@ -428,7 +440,7 @@ fn known_settings() -> Vec<ConfigSetting> {
             description: "Where plugins are installed (TMUX_PLUGIN_MANAGER_PATH)".into(),
             category: SettingCategory::Plugins,
             stype: SettingType::String,
-            value: String::new(), default: "~/.tmux/plugins".into(),
+            value: String::new(), default: plugin_dir_default.into(),
             choices: vec![], line_number: None,
         },
     ]
@@ -436,7 +448,7 @@ fn known_settings() -> Vec<ConfigSetting> {
 
 /// Parse settings from a TmuxConfig's lines, matching against known settings.
 pub fn parse_settings(config: &TmuxConfig) -> Vec<ConfigSetting> {
-    let mut settings = known_settings();
+    let mut settings = known_settings_for(&config.config_type);
 
     // Patterns for `set -g key value` and `set-option -g key value`
     let set_re = Regex::new(
@@ -531,7 +543,7 @@ pub fn reset_setting(config: &mut TmuxConfig, key: &str) -> Result<()> {
 /// Reset ALL settings to defaults by removing all `set -g` lines for known settings.
 /// Preserves plugin lines, comments, and unknown settings.
 pub fn reset_all_settings(config: &mut TmuxConfig) -> Result<usize> {
-    let known = known_settings();
+    let known = known_settings_for(&config.config_type);
     let mut removed = 0usize;
 
     for setting in &known {
@@ -568,30 +580,209 @@ pub fn reset_all_settings(config: &mut TmuxConfig) -> Result<usize> {
 /// Reset the entire config to a clean default for the given type.
 /// Removes ALL content and recreates the default template,
 /// preserving the file path.
+///
+/// ## tmux factory defaults
+/// Based on the official tmux source (tmux/tmux on GitHub):
+///   - prefix: C-b
+///   - escape-time: 500ms
+///   - base-index: 0
+///   - mouse: off
+///   - mode-keys: emacs
+///   - status: on (bottom)
+///   - history-limit: 2000
+///   - default-terminal: screen
+///
+/// ## PSMux factory defaults
+/// Based on the PSMux project (marlocarlo/psmux on GitHub):
+///   - prefix: C-b (same as tmux)
+///   - escape-time: 500ms
+///   - base-index: 0
+///   - mouse: off
+///   - mode-keys: emacs
+///   - status: on (bottom)
+///   - history-limit: 2000
+///
+/// This function writes a CLEAN config that explicitly uses all tmux/psmux
+/// defaults (no settings = defaults), with comments documenting each default.
 pub fn reset_entire_config(config: &mut TmuxConfig) -> Result<()> {
+    // PSMux defaults differ from tmux defaults — sourced directly from:
+    //   PSMux: psmux/src/types.rs  AppState::new()
+    //   tmux:  https://github.com/tmux/tmux  (options-table.c)
     let content = match config.config_type.as_str() {
-        "psmux" => "# PSMux configuration\n\
-                     # Managed by tppanel — Tmux Plugin Panel\n\
-                     #\n\
-                     # For more info: https://github.com/marlocarlo/psmux\n\
-                     \n\
-                     # Enable mouse\n\
-                     set -g mouse on\n\
-                     \n\
-                     # Window numbering\n\
-                     set -g base-index 1\n\
-                     \n".to_string(),
-        _ => "# tmux configuration\n\
-                     # Managed by tppanel — Tmux Plugin Panel\n\
-                     #\n\
-                     \n\
-                     # Enable mouse\n\
-                     set -g mouse on\n\
-                     \n\
-                     # Window numbering\n\
-                     set -g base-index 1\n\
-                     \n".to_string(),
+        "psmux" => {
+            // PSMux built-in defaults from AppState::new() in psmux/src/types.rs:
+            //   mouse_enabled: true          (PSMux defaults mouse ON, unlike tmux)
+            //   escape_time_ms: 500
+            //   history_limit: 2000
+            //   window_base_index: 0
+            //   pane_base_index: 0
+            //   status_visible: true
+            //   status_position: "bottom"
+            //   status_interval: 15
+            //   status_style: "bg=green,fg=black"
+            //   mode_keys: "emacs"
+            //   focus_events: false
+            //   set_clipboard: "on"          (PSMux defaults to "on", not "external")
+            //   automatic_rename: true
+            //   renumber_windows: false
+            //   prefix_key: C-b
+            //   repeat_time_ms: 500
+            "\
+# ─────────────────────────────────────────────────────────────
+# PSMux Configuration — Factory Defaults
+# ─────────────────────────────────────────────────────────────
+# Reset to defaults by tppanel — Tmux Plugin Panel
+# For more info: https://github.com/marlocarlo/psmux
+#
+# PSMux built-in defaults are applied automatically.
+# Uncomment and change any line below to override a default.
+# To restore a setting to default, comment it out or delete it.
+# ─────────────────────────────────────────────────────────────
+
+# ── General ──────────────────────────────────────────────────
+# Prefix key (PSMux default: C-b)
+# set -g prefix C-b
+
+# Escape key delay in milliseconds (PSMux default: 500)
+# set -g escape-time 500
+
+# Repeat time for prefix keys in ms (PSMux default: 500)
+# set -g repeat-time 500
+
+# Scrollback history limit (PSMux default: 2000)
+# set -g history-limit 2000
+
+# Window/pane base index (PSMux default: 0)
+# set -g base-index 0
+# setw -g pane-base-index 0
+
+# ── Mouse ────────────────────────────────────────────────────
+# Mouse support (PSMux default: on — PSMux enables mouse by default)
+# set -g mouse on
+
+# ── Display ──────────────────────────────────────────────────
+# Allow window auto-rename (PSMux default: on)
+# setw -g automatic-rename on
+
+# Renumber windows when one is closed (PSMux default: off)
+# set -g renumber-windows off
+
+# Message display time in ms (PSMux default: 750)
+# set -g display-time 750
+
+# Pane number display time in ms (PSMux default: 1000)
+# set -g display-panes-time 1000
+
+# ── Status Bar ───────────────────────────────────────────────
+# Show status bar (PSMux default: on)
+# set -g status on
+
+# Status bar position (PSMux default: bottom)
+# set -g status-position bottom
+
+# Status refresh interval in seconds (PSMux default: 15)
+# set -g status-interval 15
+
+# Status bar style (PSMux default: bg=green,fg=black)
+# set -g status-style 'bg=green,fg=black'
+
+# Status bar justify (PSMux default: left)
+# set -g status-justify left
+
+# ── Key Bindings ─────────────────────────────────────────────
+# Copy mode keys (PSMux default: emacs)
+# setw -g mode-keys emacs
+
+# Focus events (PSMux default: off)
+# set -g focus-events off
+
+# Clipboard integration (PSMux default: on)
+# set -g set-clipboard on
+
+"
+        .to_string()
+        }
+        _ => "\
+# ─────────────────────────────────────────────────────────────
+# tmux Configuration — Factory Defaults
+# ─────────────────────────────────────────────────────────────
+# Reset to defaults by tppanel — Tmux Plugin Panel
+# Official tmux source: https://github.com/tmux/tmux
+#
+# tmux built-in defaults are applied automatically.
+# Uncomment and change any line below to override a default.
+# To restore a setting to default, comment it out or delete it.
+# ─────────────────────────────────────────────────────────────
+
+# ── General ──────────────────────────────────────────────────
+# Prefix key (tmux default: C-b)
+# set -g prefix C-b
+
+# Escape key delay in milliseconds (tmux default: 500)
+# set -g escape-time 500
+
+# Scrollback history limit (tmux default: 2000)
+# set -g history-limit 2000
+
+# Window/pane base index (tmux default: 0)
+# set -g base-index 0
+# setw -g pane-base-index 0
+
+# ── Mouse ────────────────────────────────────────────────────
+# Mouse support (tmux default: off)
+# set -g mouse off
+
+# ── Display ──────────────────────────────────────────────────
+# Terminal type (tmux default: screen)
+# set -g default-terminal screen
+
+# Allow window auto-rename (tmux default: on)
+# setw -g automatic-rename on
+
+# Renumber windows when one is closed (tmux default: off)
+# set -g renumber-windows off
+
+# ── Status Bar ───────────────────────────────────────────────
+# Show status bar (tmux default: on)
+# set -g status on
+
+# Status bar position (tmux default: bottom)
+# set -g status-position bottom
+
+# Status refresh interval in seconds (tmux default: 15)
+# set -g status-interval 15
+
+# ── Key Bindings ─────────────────────────────────────────────
+# Copy mode keys (tmux default: emacs)
+# setw -g mode-keys emacs
+
+# Focus events (tmux default: off)
+# set -g focus-events off
+
+# Clipboard integration (tmux default: external)
+# set -g set-clipboard external
+
+"
+        .to_string(),
     };
+
+    // Backup the original config before overwriting
+    let backup_path = config.path.with_extension("conf.bak");
+    if config.path.exists() {
+        let _ = fs::copy(&config.path, &backup_path);
+    }
+
+    // Remove all installed plugin directories so they don't linger on disk
+    if config.plugin_install_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&config.plugin_install_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    let _ = fs::remove_dir_all(&p);
+                }
+            }
+        }
+    }
 
     fs::write(&config.path, &content)
         .with_context(|| format!("Failed to write {}", config.path.display()))?;
@@ -1078,4 +1269,368 @@ fn find_insert_point(config: &TmuxConfig) -> usize {
     }
     // End of file
     config.lines.len()
+}
+
+// ── Unit Tests ──────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn make_temp_config(content: &str, config_type: &str) -> TmuxConfig {
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join("tppanel-tests");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join(format!("test-{}-{}-{}.conf", config_type, std::process::id(), id));
+        fs::write(&path, content).unwrap();
+        parse_config(&path, config_type).unwrap()
+    }
+
+    fn cleanup_temp(config: &TmuxConfig) {
+        let _ = fs::remove_file(&config.path);
+    }
+
+    #[test]
+    fn test_parse_empty_config() {
+        let cfg = make_temp_config("", "tmux");
+        assert_eq!(cfg.plugins.len(), 0);
+        assert_eq!(cfg.config_type, "tmux");
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_parse_plugin_lines() {
+        let content = "\
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-sensible'
+# set -g @plugin 'tmux-plugins/tmux-yank'
+";
+        let cfg = make_temp_config(content, "tmux");
+        assert_eq!(cfg.plugins.len(), 3);
+        assert_eq!(cfg.plugins[0].repo, "tmux-plugins/tpm");
+        assert!(cfg.plugins[0].enabled);
+        assert_eq!(cfg.plugins[1].repo, "tmux-plugins/tmux-sensible");
+        assert!(cfg.plugins[1].enabled);
+        assert_eq!(cfg.plugins[2].repo, "tmux-plugins/tmux-yank");
+        assert!(!cfg.plugins[2].enabled); // commented out
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_parse_settings_values() {
+        let content = "\
+set -g mouse on
+set -g base-index 1
+set -g escape-time 0
+set -g status-position top
+";
+        let cfg = make_temp_config(content, "tmux");
+        let settings = parse_settings(&cfg);
+
+        let mouse = settings.iter().find(|s| s.key == "mouse").unwrap();
+        assert_eq!(mouse.value, "on");
+
+        let base_idx = settings.iter().find(|s| s.key == "base-index").unwrap();
+        assert_eq!(base_idx.value, "1");
+
+        let escape = settings.iter().find(|s| s.key == "escape-time").unwrap();
+        assert_eq!(escape.value, "0");
+
+        let status_pos = settings.iter().find(|s| s.key == "status-position").unwrap();
+        assert_eq!(status_pos.value, "top");
+
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_parse_settings_defaults() {
+        let cfg = make_temp_config("# empty config\n", "tmux");
+        let settings = parse_settings(&cfg);
+
+        let mouse = settings.iter().find(|s| s.key == "mouse").unwrap();
+        assert_eq!(mouse.value, ""); // not set
+        assert_eq!(mouse.default, "off");
+        assert_eq!(mouse.display_value(), "off"); // shows default
+        assert!(mouse.is_default());
+
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_known_settings_have_defaults() {
+        let settings = known_settings_for("tmux");
+        assert!(!settings.is_empty());
+        for s in &settings {
+            assert!(!s.key.is_empty(), "Setting key must not be empty");
+            assert!(!s.label.is_empty(), "Setting label must not be empty");
+            assert!(!s.description.is_empty(), "Setting '{}' must have a description", s.key);
+        }
+    }
+
+    #[test]
+    fn test_setting_categories_cover_all() {
+        let settings = known_settings_for("tmux");
+        for cat in SettingCategory::ALL {
+            let count = settings.iter().filter(|s| s.category == *cat).count();
+            // Every category should have at least one setting
+            assert!(count > 0, "Category {:?} has no settings", cat);
+        }
+    }
+
+    #[test]
+    fn test_psmux_defaults_differ_from_tmux() {
+        let tmux = known_settings_for("tmux");
+        let psmux = known_settings_for("psmux");
+
+        let tmux_mouse = tmux.iter().find(|s| s.key == "mouse").unwrap();
+        let psmux_mouse = psmux.iter().find(|s| s.key == "mouse").unwrap();
+        assert_eq!(tmux_mouse.default, "off");
+        assert_eq!(psmux_mouse.default, "on"); // PSMux defaults mouse ON
+
+        let tmux_clip = tmux.iter().find(|s| s.key == "set-clipboard").unwrap();
+        let psmux_clip = psmux.iter().find(|s| s.key == "set-clipboard").unwrap();
+        assert_eq!(tmux_clip.default, "external");
+        assert_eq!(psmux_clip.default, "on"); // PSMux defaults to "on"
+
+        let tmux_dir = tmux.iter().find(|s| s.key == "TMUX_PLUGIN_MANAGER_PATH").unwrap();
+        let psmux_dir = psmux.iter().find(|s| s.key == "TMUX_PLUGIN_MANAGER_PATH").unwrap();
+        assert_eq!(tmux_dir.default, "~/.tmux/plugins");
+        assert_eq!(psmux_dir.default, "~/.psmux/plugins");
+    }
+
+    #[test]
+    fn test_psmux_settings_show_correct_defaults() {
+        let cfg = make_temp_config("# empty psmux config\n", "psmux");
+        let settings = parse_settings(&cfg);
+
+        // With no explicit "set -g mouse" line, the display_value should show the PSMux default "on"
+        let mouse = settings.iter().find(|s| s.key == "mouse").unwrap();
+        assert_eq!(mouse.display_value(), "on");
+        assert!(mouse.is_default());
+
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_set_setting_new() {
+        let mut cfg = make_temp_config("# test\n", "tmux");
+        set_setting(&mut cfg, "mouse", "on").unwrap();
+
+        // Re-read the file
+        let content = fs::read_to_string(&cfg.path).unwrap();
+        assert!(content.contains("set -g mouse on"));
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_set_setting_update() {
+        let mut cfg = make_temp_config("set -g mouse off\n", "tmux");
+        set_setting(&mut cfg, "mouse", "on").unwrap();
+
+        let content = fs::read_to_string(&cfg.path).unwrap();
+        assert!(content.contains("set -g mouse on"));
+        assert!(!content.contains("set -g mouse off"));
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_reset_setting() {
+        let mut cfg = make_temp_config("set -g mouse on\nset -g base-index 1\n", "tmux");
+        reset_setting(&mut cfg, "mouse").unwrap();
+
+        let content = fs::read_to_string(&cfg.path).unwrap();
+        assert!(!content.contains("mouse"));
+        assert!(content.contains("set -g base-index 1"));
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_reset_all_settings() {
+        let mut cfg = make_temp_config(
+            "set -g mouse on\nset -g base-index 1\nset -g escape-time 0\n",
+            "tmux",
+        );
+        let removed = reset_all_settings(&mut cfg).unwrap();
+        assert!(removed >= 3);
+
+        let content = fs::read_to_string(&cfg.path).unwrap();
+        assert!(!content.contains("set -g mouse"));
+        assert!(!content.contains("set -g base-index"));
+        assert!(!content.contains("set -g escape-time"));
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_reset_entire_config_tmux() {
+        let mut cfg = make_temp_config(
+            "set -g mouse on\nset -g @plugin 'foo/bar'\n",
+            "tmux",
+        );
+        reset_entire_config(&mut cfg).unwrap();
+
+        let content = fs::read_to_string(&cfg.path).unwrap();
+        assert!(content.contains("Factory Defaults"));
+        assert!(content.contains("tmux"));
+        assert!(!content.contains("foo/bar")); // plugins removed
+        assert!(cfg.plugins.is_empty());
+
+        // Verify backup was created
+        let bak = cfg.path.with_extension("conf.bak");
+        assert!(bak.exists(), "Backup file should be created");
+        let bak_content = fs::read_to_string(&bak).unwrap();
+        assert!(bak_content.contains("foo/bar")); // original content preserved in backup
+        let _ = fs::remove_file(&bak);
+
+        // tmux-specific: mouse default should be "off"
+        assert!(content.contains("Mouse support (tmux default: off)"));
+        // tmux-specific: clipboard default should be "external"
+        assert!(content.contains("set-clipboard external"));
+
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_reset_entire_config_psmux() {
+        let mut cfg = make_temp_config(
+            "set -g mouse off\nsource-file ~/.psmux/plugins/psmux-sensible/plugin.conf\n",
+            "psmux",
+        );
+
+        // Use a temp plugin dir so we don't touch the real one
+        let temp_plugins = std::env::temp_dir()
+            .join("tppanel-tests")
+            .join(format!("plugins-{}-{}", std::process::id(), TEST_COUNTER.fetch_add(1, Ordering::SeqCst)));
+        let _ = fs::create_dir_all(&temp_plugins);
+        cfg.plugin_install_dir = temp_plugins.clone();
+
+        // Create fake plugin directories to verify they get removed
+        fs::create_dir_all(temp_plugins.join("psmux-sensible")).unwrap();
+        fs::write(temp_plugins.join("psmux-sensible/plugin.conf"), "# fake").unwrap();
+        fs::create_dir_all(temp_plugins.join("psmux-theme-catppuccin")).unwrap();
+        assert!(temp_plugins.join("psmux-sensible").is_dir());
+        assert!(temp_plugins.join("psmux-theme-catppuccin").is_dir());
+
+        reset_entire_config(&mut cfg).unwrap();
+
+        let content = fs::read_to_string(&cfg.path).unwrap();
+        assert!(content.contains("PSMux Configuration"));
+        assert!(content.contains("Factory Defaults"));
+        assert!(content.contains("marlocarlo/psmux"));
+
+        // PSMux-specific: mouse default should be "on" (not "off" like tmux!)
+        assert!(content.contains("Mouse support (PSMux default: on"));
+        // PSMux-specific: clipboard default should be "on"
+        assert!(content.contains("set-clipboard on"));
+        // source-file lines should be removed in reset
+        assert!(!content.contains("source-file"));
+
+        // Verify plugin directories were deleted from disk
+        assert!(!temp_plugins.join("psmux-sensible").exists(), "Plugin dirs should be removed on reset");
+        assert!(!temp_plugins.join("psmux-theme-catppuccin").exists(), "Plugin dirs should be removed on reset");
+
+        // Verify backup preserves original
+        let bak = cfg.path.with_extension("conf.bak");
+        assert!(bak.exists());
+        let bak_content = fs::read_to_string(&bak).unwrap();
+        assert!(bak_content.contains("source-file"));
+        let _ = fs::remove_file(&bak);
+        let _ = fs::remove_dir_all(&temp_plugins);
+
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_add_plugin_to_config() {
+        let mut cfg = make_temp_config("# test\n", "tmux");
+        let added = add_plugin_to_config(&mut cfg, "tmux-plugins/tmux-sensible", None).unwrap();
+        assert!(added);
+        assert_eq!(cfg.plugins.len(), 1);
+        assert_eq!(cfg.plugins[0].repo, "tmux-plugins/tmux-sensible");
+
+        let content = fs::read_to_string(&cfg.path).unwrap();
+        assert!(content.contains("@plugin 'tmux-plugins/tmux-sensible'"));
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_add_plugin_duplicate() {
+        let mut cfg = make_temp_config(
+            "set -g @plugin 'tmux-plugins/tmux-sensible'\n",
+            "tmux",
+        );
+        let added = add_plugin_to_config(&mut cfg, "tmux-plugins/tmux-sensible", None).unwrap();
+        assert!(!added); // already exists
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_remove_plugin_from_config() {
+        let mut cfg = make_temp_config(
+            "set -g @plugin 'tmux-plugins/tpm'\nset -g @plugin 'tmux-plugins/tmux-sensible'\n",
+            "tmux",
+        );
+        let removed = remove_plugin_from_config(&mut cfg, "tmux-plugins/tmux-sensible").unwrap();
+        assert!(removed);
+        assert_eq!(cfg.plugins.len(), 1);
+        assert_eq!(cfg.plugins[0].repo, "tmux-plugins/tpm");
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_config_setting_is_bool_on() {
+        let s = ConfigSetting {
+            key: "mouse".into(),
+            label: "Mouse".into(),
+            description: "".into(),
+            category: SettingCategory::Mouse,
+            stype: SettingType::Bool,
+            value: "on".into(),
+            default: "off".into(),
+            choices: vec![],
+            line_number: None,
+        };
+        assert!(s.is_bool_on());
+    }
+
+    #[test]
+    fn test_config_setting_display_value_uses_default() {
+        let s = ConfigSetting {
+            key: "mouse".into(),
+            label: "Mouse".into(),
+            description: "".into(),
+            category: SettingCategory::Mouse,
+            stype: SettingType::Bool,
+            value: "".into(),
+            default: "off".into(),
+            choices: vec![],
+            line_number: None,
+        };
+        assert_eq!(s.display_value(), "off");
+        assert!(s.is_default());
+    }
+
+    #[test]
+    fn test_setting_category_labels() {
+        for cat in SettingCategory::ALL {
+            assert!(!cat.label().is_empty());
+            assert!(!cat.icon().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_plugin_entry_methods() {
+        let pe = PluginEntry {
+            raw_line: "set -g @plugin 'tmux-plugins/tmux-sensible'".into(),
+            line_number: 1,
+            repo: "tmux-plugins/tmux-sensible".into(),
+            branch: None,
+            source: "tmux".into(),
+            enabled: true,
+        };
+        assert_eq!(pe.short_name(), "tmux-sensible");
+        assert_eq!(pe.github_url(), "https://github.com/tmux-plugins/tmux-sensible");
+    }
 }

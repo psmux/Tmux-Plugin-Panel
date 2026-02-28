@@ -253,18 +253,45 @@ async fn handle_confirm_input(app: &mut App, code: KeyCode) {
                         }
                     }
                     app::ConfirmAction::ResetEntireConfig => {
-                        if let Some(ref mut cfg) = app.config {
-                            match config::reset_entire_config(cfg) {
-                                Ok(()) => {
-                                    app.set_status("Config reset to defaults — all plugins removed");
-                                    app.refresh_installed();
-                                    app.refresh_themes();
-                                    app.refresh_settings();
-                                    app.refresh_browse();
+                        let reset_result = if let Some(ref mut cfg) = app.config {
+                            config::reset_entire_config(cfg).map(|()| {
+                                let reload_result = plugins::reload_config(cfg, &app.detected_muxes);
+                                let bak = cfg.path.with_extension("conf.bak");
+                                let backup_note = if bak.exists() {
+                                    format!(" Backup saved to {}", bak.display())
+                                } else {
+                                    String::new()
+                                };
+                                let type_label = cfg.type_label().to_string();
+                                (reload_result, type_label, backup_note)
+                            })
+                        } else {
+                            Err(anyhow::anyhow!("No config"))
+                        };
+                        match reset_result {
+                            Ok((reload_result, type_label, backup_note)) => {
+                                app.refresh_installed();
+                                app.refresh_themes();
+                                app.refresh_settings();
+                                app.refresh_browse();
+                                if reload_result.success {
+                                    app.set_status(&format!(
+                                        "Config reset to {} defaults — all plugins removed. {}.{}",
+                                        type_label,
+                                        reload_result.message,
+                                        backup_note,
+                                    ));
+                                } else {
+                                    app.set_status(&format!(
+                                        "Config reset to {} defaults — restart {} to apply.{}",
+                                        type_label,
+                                        type_label,
+                                        backup_note,
+                                    ));
                                 }
-                                Err(e) => {
-                                    app.set_status_err(&format!("Reset failed: {}", e));
-                                }
+                            }
+                            Err(e) => {
+                                app.set_status_err(&format!("Reset failed: {}", e));
                             }
                         }
                     }
@@ -317,10 +344,11 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
             app.detail_readme = None;
             app.detail_scroll_offset = 0;
         }
-        KeyCode::Char('1') => { app.tab = Tab::Browse; app.detail_readme = None; }
-        KeyCode::Char('2') => { app.tab = Tab::Installed; app.detail_readme = None; }
-        KeyCode::Char('3') => { app.tab = Tab::Themes; app.detail_readme = None; }
-        KeyCode::Char('4') => { app.tab = Tab::Config; app.detail_readme = None; }
+        KeyCode::Char('1') => { app.tab = Tab::Dashboard; app.detail_readme = None; }
+        KeyCode::Char('2') => { app.tab = Tab::Browse; app.detail_readme = None; }
+        KeyCode::Char('3') => { app.tab = Tab::Installed; app.detail_readme = None; }
+        KeyCode::Char('4') => { app.tab = Tab::Themes; app.detail_readme = None; }
+        KeyCode::Char('5') => { app.tab = Tab::Config; app.detail_readme = None; }
 
         // ── Navigation ──────────────────────────────────────
         KeyCode::Up | KeyCode::Char('k') => {
@@ -412,9 +440,11 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
             }
         }
 
-        // ── Install (Enter) / Settings toggle ────────────
+        // ── Install (Enter) / Settings toggle / Dashboard action ─
         KeyCode::Enter => {
-            if app.tab == Tab::Config {
+            if app.tab == Tab::Dashboard {
+                handle_dashboard_enter(app);
+            } else if app.tab == Tab::Config {
                 handle_settings_enter(app);
             } else {
                 handle_enter(app).await;
@@ -426,10 +456,17 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
             if app.tab == Tab::Config && app.config.is_some() {
                 let type_label = app.config.as_ref().unwrap().type_label().to_string();
                 app.confirm = Some(app::ConfirmDialog {
-                    title: "Reset Entire Config".to_string(),
+                    title: "Factory Reset".to_string(),
                     message: format!(
-                        "DANGER: Reset your entire {} config to factory defaults?\n\nThis removes ALL settings AND all plugin lines.",
-                        type_label
+                        "Reset your entire {} config to factory defaults?\n\n\
+                         This will:\n\
+                         • Remove ALL custom settings\n\
+                         • Remove ALL plugin/source-file lines\n\
+                         • Delete ALL installed plugin directories from disk\n\
+                         • Replace the config with {} built-in defaults\n\
+                         • Auto-reload the running {} session\n\n\
+                         A backup of your current config will be saved as .conf.bak",
+                        type_label, type_label, type_label
                     ),
                     repo: String::new(),
                     action: app::ConfirmAction::ResetEntireConfig,
@@ -619,11 +656,61 @@ async fn handle_normal_input(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         // ── Help ────────────────────────────────────────────
         KeyCode::Char('?') => {
             app.set_status(
-                "q:quit Tab:sw ↑↓jk:nav Enter:inst x:rm u:upd p:preview /:srch Bksp:resetSetting D:resetAll Ctrl+D:resetConfig R:reload",
+                "q:quit Tab:sw 1-5:tabs ↑↓:nav Enter:action x:rm u:upd p:preview /:srch Bksp:reset D:resetAll Ctrl+D:factoryReset R:reload",
             );
         }
 
         _ => {}
+    }
+}
+
+/// Handle Enter on Dashboard — execute quick action.
+fn handle_dashboard_enter(app: &mut App) {
+    use app::DashboardItem;
+    let item = DashboardItem::ALL[app.dashboard_selected];
+    match item {
+        DashboardItem::BrowsePlugins => {
+            app.tab = Tab::Browse;
+            app.detail_readme = None;
+            app.set_status("Browse and install plugins — use ↑↓ to navigate, Enter to install");
+        }
+        DashboardItem::BrowseThemes => {
+            app.tab = Tab::Themes;
+            app.detail_readme = None;
+            app.set_status("Browse themes — Enter to install, p to preview");
+        }
+        DashboardItem::ConfigureSettings => {
+            app.tab = Tab::Config;
+            app.detail_readme = None;
+            app.set_status("Settings — Enter to toggle/edit, Backspace to reset, ←→ categories");
+        }
+        DashboardItem::ResetToDefaults => {
+            if app.config.is_some() {
+                let type_label = app.config.as_ref().unwrap().type_label().to_string();
+                app.confirm = Some(app::ConfirmDialog {
+                    title: "Factory Reset".to_string(),
+                    message: format!(
+                        "Reset your entire {} config to factory defaults?\n\n\
+                         This will:\n\
+                         • Remove ALL custom settings\n\
+                         • Remove ALL plugin/source-file lines\n\
+                         • Delete ALL installed plugin directories from disk\n\
+                         • Replace the config with {} built-in defaults\n\
+                         • Auto-reload the running {} session\n\n\
+                         A backup of your current config will be saved as .conf.bak",
+                        type_label, type_label, type_label
+                    ),
+                    repo: String::new(),
+                    action: app::ConfirmAction::ResetEntireConfig,
+                    confirm_selected: false,
+                });
+            } else {
+                app.set_status_err("No config file found. Press 'c' in Config tab to create one.");
+            }
+        }
+        DashboardItem::ManageRegistries => {
+            app.set_status("Registry sources are configured in registry_sources.json — see REGISTRY_FORMAT.md for details");
+        }
     }
 }
 
