@@ -340,6 +340,22 @@
       "compat": ["psmux"]
     },
     {
+      "repo": "psmux-plugins/psmux-yank",
+      "name": "psmux-yank",
+      "description": "Windows clipboard integration — copy from copy-mode with native APIs",
+      "category": "essential",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
+      "repo": "psmux-plugins/psmux-prefix-highlight",
+      "name": "psmux-prefix-highlight",
+      "description": "Highlight status bar when prefix key is active",
+      "category": "statusbar",
+      "stars": 0,
+      "compat": ["psmux"]
+    },
+    {
       "repo": "psmux-plugins/psmux-pain-control",
       "name": "psmux-pain-control",
       "description": "Vim-style pane navigation (h/j/k/l) and intuitive split bindings",
