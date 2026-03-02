@@ -340,14 +340,6 @@
       "compat": ["psmux"]
     },
     {
-      "repo": "psmux-plugins/psmux-yank",
-      "name": "psmux-yank",
-      "description": "Windows clipboard integration — copy from copy-mode with native APIs",
-      "category": "essential",
-      "stars": 0,
-      "compat": ["psmux"]
-    },
-    {
       "repo": "psmux-plugins/psmux-prefix-highlight",
       "name": "psmux-prefix-highlight",
       "description": "Highlight status bar when prefix key is active",
