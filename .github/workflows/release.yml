@@ -49,12 +49,12 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $version = "${{ github.ref_name }}"
-          $zipName = "tppanel-$version-${{ matrix.artifact }}"
+          $zipName = "tmuxpanel-$version-${{ matrix.artifact }}"
           $releaseDir = "target/${{ matrix.target }}/release"
           New-Item -ItemType Directory -Path $zipName -Force
 
           # Verify all expected binaries exist before copying
-          foreach ($exe in @("tppanel.exe", "tmuxplugins.exe", "tmuxthemes.exe")) {
+          foreach ($exe in @("tmuxpanel.exe", "tmuxplugins.exe", "tmuxthemes.exe")) {
             $path = Join-Path $releaseDir $exe
             if (-not (Test-Path $path)) {
               Write-Error "FATAL: Expected binary '$path' not found! Build may have failed silently."
@@ -63,7 +63,7 @@ jobs:
             }
           }
 
-          Copy-Item "$releaseDir/tppanel.exe" "$zipName/tppanel.exe" -ErrorAction Stop
+          Copy-Item "$releaseDir/tmuxpanel.exe" "$zipName/tmuxpanel.exe" -ErrorAction Stop
           Copy-Item "$releaseDir/tmuxplugins.exe" "$zipName/tmuxplugins.exe" -ErrorAction Stop
           Copy-Item "$releaseDir/tmuxthemes.exe" "$zipName/tmuxthemes.exe" -ErrorAction Stop
           Copy-Item "README.md" "$zipName/" -ErrorAction Stop
@@ -72,7 +72,7 @@ jobs:
 
           # Verify zip contents
           $entries = [System.IO.Compression.ZipFile]::OpenRead("$zipName.zip").Entries.Name
-          foreach ($exe in @("tppanel.exe", "tmuxplugins.exe", "tmuxthemes.exe")) {
+          foreach ($exe in @("tmuxpanel.exe", "tmuxplugins.exe", "tmuxthemes.exe")) {
             if ($exe -notin $entries) {
               Write-Error "FATAL: '$exe' missing from zip archive!"
               exit 1
@@ -83,8 +83,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tppanel-${{ matrix.artifact }}
-          path: tppanel-*-${{ matrix.artifact }}.zip
+          name: tmuxpanel-${{ matrix.artifact }}
+          path: tmuxpanel-*-${{ matrix.artifact }}.zip
 
   release:
     name: Create Release
@@ -101,9 +101,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            tppanel-windows-x64/*.zip
-            tppanel-windows-x86/*.zip
-            tppanel-windows-arm64/*.zip
+            tmuxpanel-windows-x64/*.zip
+            tmuxpanel-windows-x86/*.zip
+            tmuxpanel-windows-arm64/*.zip
           body: |
             ## Tmux Plugin Panel ${{ github.ref_name }}
             
@@ -112,40 +112,40 @@ jobs:
             ### Downloads
             | Platform | File |
             |----------|------|
-            | Windows x64 (Intel/AMD 64-bit) | `tppanel-${{ github.ref_name }}-windows-x64.zip` |
-            | Windows x86 (Intel/AMD 32-bit) | `tppanel-${{ github.ref_name }}-windows-x86.zip` |
-            | Windows ARM64 (Snapdragon/Surface Pro X) | `tppanel-${{ github.ref_name }}-windows-arm64.zip` |
+            | Windows x64 (Intel/AMD 64-bit) | `tmuxpanel-${{ github.ref_name }}-windows-x64.zip` |
+            | Windows x86 (Intel/AMD 32-bit) | `tmuxpanel-${{ github.ref_name }}-windows-x86.zip` |
+            | Windows ARM64 (Snapdragon/Surface Pro X) | `tmuxpanel-${{ github.ref_name }}-windows-arm64.zip` |
             
             ### Installation
             
             **Via Scoop (recommended):**
             ```powershell
-            scoop bucket add tppanel https://github.com/marlocarlo/scoop-tppanel
-            scoop install tppanel
+            scoop bucket add tmuxpanel https://github.com/marlocarlo/scoop-tmuxpanel
+            scoop install tmuxpanel
             ```
             
             **Via Chocolatey:**
             ```powershell
-            choco install tppanel
+            choco install tmuxpanel
             ```
             
             **Via WinGet:**
             ```powershell
-            winget install marlocarlo.tppanel
+            winget install marlocarlo.tmuxpanel
             ```
             
             **Via Cargo:**
             ```powershell
-            cargo install tppanel
+            cargo install tmuxpanel
             ```
             
             **Manual Installation:**
             1. Download the zip matching your architecture
             2. Extract to a folder in your PATH
-            3. `tppanel`, `tmuxplugins`, and `tmuxthemes` commands will all be available
+            3. `tmuxpanel`, `tmuxplugins`, and `tmuxthemes` commands will all be available
             
             ### What's Included
-            - `tppanel.exe` — Main TUI plugin manager
+            - `tmuxpanel.exe` — Main TUI plugin manager
             - `tmuxplugins.exe` — Alias (opens Browse tab)
             - `tmuxthemes.exe` — Alias (opens Themes browser)
           draft: false
@@ -199,12 +199,12 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ steps.version.outputs.TAG }}"
-          $zipUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/tppanel-$tag-windows-x64.zip"
+          $zipUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/tmuxpanel-$tag-windows-x64.zip"
           Write-Output "Downloading $zipUrl"
           $ok = $false
           for ($i = 1; $i -le 5; $i++) {
             try {
-              Invoke-WebRequest -Uri $zipUrl -OutFile "tppanel-release.zip" -UseBasicParsing -ErrorAction Stop
+              Invoke-WebRequest -Uri $zipUrl -OutFile "tmuxpanel-release.zip" -UseBasicParsing -ErrorAction Stop
               $ok = $true; break
             } catch {
               if ($i -eq 5) { throw }
@@ -217,18 +217,21 @@ jobs:
         id: checksum
         shell: pwsh
         run: |
-          $hash = (Get-FileHash "tppanel-release.zip" -Algorithm SHA256).Hash
-          echo "SHA256=$hash" >> $env:GITHUB_OUTPUT
-          Write-Output "SHA256: $hash"
+          $hash256 = (Get-FileHash "tmuxpanel-release.zip" -Algorithm SHA256).Hash
+          $hash512 = (Get-FileHash "tmuxpanel-release.zip" -Algorithm SHA512).Hash
+          echo "SHA256=$hash256" >> $env:GITHUB_OUTPUT
+          echo "SHA512=$hash512" >> $env:GITHUB_OUTPUT
+          Write-Output "SHA256: $hash256"
+          Write-Output "SHA512: $hash512"
 
       - name: Verify checksum (download again and compare)
         shell: pwsh
         run: |
           $tag = "${{ steps.version.outputs.TAG }}"
-          $zipUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/tppanel-$tag-windows-x64.zip"
-          Invoke-WebRequest -Uri $zipUrl -OutFile "tppanel-verify.zip" -UseBasicParsing
-          $hash1 = (Get-FileHash "tppanel-release.zip" -Algorithm SHA256).Hash
-          $hash2 = (Get-FileHash "tppanel-verify.zip" -Algorithm SHA256).Hash
+          $zipUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/tmuxpanel-$tag-windows-x64.zip"
+          Invoke-WebRequest -Uri $zipUrl -OutFile "tmuxpanel-verify.zip" -UseBasicParsing
+          $hash1 = (Get-FileHash "tmuxpanel-release.zip" -Algorithm SHA256).Hash
+          $hash2 = (Get-FileHash "tmuxpanel-verify.zip" -Algorithm SHA256).Hash
           if ($hash1 -ne $hash2) {
             Write-Error "Checksum mismatch! $hash1 vs $hash2"
             exit 1
@@ -241,7 +244,8 @@ jobs:
           $ver = "${{ steps.version.outputs.VERSION }}"
           $tag = "${{ steps.version.outputs.TAG }}"
           $hash = "${{ steps.checksum.outputs.SHA256 }}"
-          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/tppanel-$tag-windows-x64.zip"
+          $hash512 = "${{ steps.checksum.outputs.SHA512 }}"
+          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/tmuxpanel-$tag-windows-x64.zip"
 
           $script = @"
           `$ErrorActionPreference = 'Stop'
@@ -259,12 +263,12 @@ jobs:
 
           Install-ChocolateyZipPackage @packageArgs
 
-          # Create shims for tppanel, tmuxplugins, and tmuxthemes
-          `$tppanelPath = Join-Path `$toolsDir "tppanel.exe"
+          # Create shims for tmuxpanel, tmuxplugins, and tmuxthemes
+          `$tmuxpanelPath = Join-Path `$toolsDir "tmuxpanel.exe"
           `$tmuxpluginsPath = Join-Path `$toolsDir "tmuxplugins.exe"
           `$tmuxthemesPath = Join-Path `$toolsDir "tmuxthemes.exe"
 
-          Install-BinFile -Name "tppanel" -Path `$tppanelPath
+          Install-BinFile -Name "tmuxpanel" -Path `$tmuxpanelPath
           Install-BinFile -Name "tmuxplugins" -Path `$tmuxpluginsPath
           Install-BinFile -Name "tmuxthemes" -Path `$tmuxthemesPath
           "@
@@ -275,11 +279,50 @@ jobs:
           Set-Content -Path "choco-pkg/tools/chocolateyinstall.ps1" -Value $script -NoNewline
           Write-Output "Generated chocolateyinstall.ps1 with checksum $hash"
 
+      - name: Generate VERIFICATION.txt
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.TAG }}"
+          $hash256 = "${{ steps.checksum.outputs.SHA256 }}"
+          $hash512 = "${{ steps.checksum.outputs.SHA512 }}"
+          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/tmuxpanel-$tag-windows-x64.zip"
+
+          $verification = @"
+          VERIFICATION
+          ============
+
+          Verification is intended to assist the Chocolatey moderators and community in
+          verifying that this package's contents are trustworthy.
+
+          Package: tmuxpanel
+          Project: https://github.com/${{ github.repository }}
+          License: MIT (https://github.com/${{ github.repository }}/blob/master/LICENSE)
+
+          Download URL:
+            $url
+
+          Checksums:
+            SHA256: $hash256
+            SHA512: $hash512
+
+          Verification Steps:
+            1. Download the zip from the URL above
+            2. Compute SHA256: Get-FileHash <file> -Algorithm SHA256
+            3. Compute SHA512: Get-FileHash <file> -Algorithm SHA512
+            4. Compare with the checksums listed above
+
+          The binaries are built from source via GitHub Actions:
+            https://github.com/${{ github.repository }}/actions
+          "@
+          $verification = ($verification -split "`n" | ForEach-Object { $_.TrimStart() }) -join "`n"
+          Set-Content -Path "choco-pkg/tools/VERIFICATION.txt" -Value $verification -NoNewline
+          Write-Output "Generated VERIFICATION.txt"
+
       - name: Generate chocolateyuninstall.ps1
         shell: pwsh
         run: |
           $script = @"
-          Uninstall-BinFile -Name "tppanel"
+          Uninstall-BinFile -Name "tmuxpanel"
           Uninstall-BinFile -Name "tmuxplugins"
           Uninstall-BinFile -Name "tmuxthemes"
           "@
@@ -294,19 +337,19 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
             <metadata>
-              <id>tppanel</id>
+              <id>tmuxpanel</id>
               <version>$ver</version>
-              <title>tppanel — Tmux Plugin Panel</title>
+              <title>tmuxpanel — Tmux Plugin Panel</title>
               <authors>marlocarlo</authors>
               <owners>marlocarlo</owners>
               <licenseUrl>https://github.com/${{ github.repository }}/blob/master/LICENSE</licenseUrl>
               <projectUrl>https://github.com/${{ github.repository }}</projectUrl>
-              <iconUrl>https://raw.githubusercontent.com/${{ github.repository }}/master/icon.svg</iconUrl>
+              <iconUrl>https://raw.githubusercontent.com/${{ github.repository }}/master/icon.png</iconUrl>
               <requireLicenseAcceptance>false</requireLicenseAcceptance>
-              <description>A full-fledged TUI plugin panel for tmux — the modern alternative to TPM. Browse, install, remove, update, and theme your tmux from a beautiful terminal interface. Includes tppanel, tmuxplugins, and tmuxthemes commands.</description>
+              <description>A full-fledged TUI plugin panel for tmux — the modern alternative to TPM. Browse, install, remove, update, and theme your tmux from a beautiful terminal interface. Includes tmuxpanel, tmuxplugins, and tmuxthemes commands.</description>
               <summary>TUI plugin manager for tmux — browse, install, theme (TPM alternative)</summary>
               <releaseNotes>https://github.com/${{ github.repository }}/releases</releaseNotes>
-              <tags>tmux plugin manager tui terminal theme tppanel tmuxplugins tmuxthemes</tags>
+              <tags>tmux plugin manager tui terminal theme tmuxpanel tmuxplugins tmuxthemes</tags>
               <packageSourceUrl>https://github.com/${{ github.repository }}</packageSourceUrl>
               <docsUrl>https://github.com/${{ github.repository }}#readme</docsUrl>
               <bugTrackerUrl>https://github.com/${{ github.repository }}/issues</bugTrackerUrl>
@@ -317,13 +360,13 @@ jobs:
           </package>
           "@
           $nuspec = ($nuspec -split "`n" | ForEach-Object { $_.TrimStart() }) -join "`n"
-          Set-Content -Path "choco-pkg/tppanel.nuspec" -Value $nuspec -NoNewline
+          Set-Content -Path "choco-pkg/tmuxpanel.nuspec" -Value $nuspec -NoNewline
 
       - name: Pack Chocolatey package
         shell: pwsh
         run: |
           cd choco-pkg
-          choco pack tppanel.nuspec
+          choco pack tmuxpanel.nuspec
           Get-ChildItem *.nupkg
 
       - name: Push to Chocolatey
@@ -362,7 +405,7 @@ jobs:
           base="https://github.com/$repo/releases/download/$tag"
 
           for arch in x64 x86 arm64; do
-            url="$base/tppanel-$tag-windows-$arch.zip"
+            url="$base/tmuxpanel-$tag-windows-$arch.zip"
             echo "Downloading $url"
             for i in 1 2 3 4 5; do
               if curl -sL -o "installer-$arch.zip" "$url"; then break; fi
@@ -378,7 +421,7 @@ jobs:
       - name: Clone scoop bucket repo
         shell: bash
         run: |
-          git clone https://x-access-token:${{ secrets.WINGET_PAT }}@github.com/marlocarlo/scoop-tppanel.git scoop-bucket
+          git clone https://x-access-token:${{ secrets.WINGET_PAT }}@github.com/marlocarlo/scoop-tmuxpanel.git scoop-bucket
 
       - name: Update scoop manifest
         shell: bash
@@ -393,7 +436,7 @@ jobs:
 
           mkdir -p scoop-bucket/bucket
 
-          cat > scoop-bucket/bucket/tppanel.json << MANIFEST
+          cat > scoop-bucket/bucket/tmuxpanel.json << MANIFEST
           {
               "version": "$ver",
               "description": "A full-fledged TUI plugin panel for tmux — the modern alternative to TPM",
@@ -401,20 +444,20 @@ jobs:
               "license": "MIT",
               "architecture": {
                   "64bit": {
-                      "url": "$base/tppanel-$tag-windows-x64.zip",
+                      "url": "$base/tmuxpanel-$tag-windows-x64.zip",
                       "hash": "$sha64"
                   },
                   "32bit": {
-                      "url": "$base/tppanel-$tag-windows-x86.zip",
+                      "url": "$base/tmuxpanel-$tag-windows-x86.zip",
                       "hash": "$sha86"
                   },
                   "arm64": {
-                      "url": "$base/tppanel-$tag-windows-arm64.zip",
+                      "url": "$base/tmuxpanel-$tag-windows-arm64.zip",
                       "hash": "$shaarm"
                   }
               },
               "bin": [
-                  "tppanel.exe",
+                  "tmuxpanel.exe",
                   "tmuxplugins.exe",
                   "tmuxthemes.exe"
               ],
@@ -424,13 +467,13 @@ jobs:
               "autoupdate": {
                   "architecture": {
                       "64bit": {
-                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tppanel-v\$version-windows-x64.zip"
+                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-x64.zip"
                       },
                       "32bit": {
-                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tppanel-v\$version-windows-x86.zip"
+                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-x86.zip"
                       },
                       "arm64": {
-                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tppanel-v\$version-windows-arm64.zip"
+                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-arm64.zip"
                       }
                   }
               }
@@ -440,9 +483,9 @@ jobs:
           cd scoop-bucket
           python3 -c "
           import json
-          with open('bucket/tppanel.json') as f:
+          with open('bucket/tmuxpanel.json') as f:
               data = json.load(f)
-          with open('bucket/tppanel.json', 'w', newline='\n') as f:
+          with open('bucket/tmuxpanel.json', 'w', newline='\n') as f:
               json.dump(data, f, indent=4)
               f.write('\n')
           "
@@ -453,9 +496,9 @@ jobs:
           cd scoop-bucket
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bucket/tppanel.json
+          git add bucket/tmuxpanel.json
           git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "Update tppanel to ${{ steps.version.outputs.VERSION }}"
+          git commit -m "Update tmuxpanel to ${{ steps.version.outputs.VERSION }}"
           git push
 
   publish-winget:
@@ -494,7 +537,7 @@ jobs:
           )
 
           foreach ($a in $archs) {
-            $url  = "$base/tppanel-$tag-$($a.artifact).zip"
+            $url  = "$base/tmuxpanel-$tag-$($a.artifact).zip"
             $file = "installer-$($a.label).zip"
             Write-Output "Downloading $url ..."
             $ok = $false
@@ -520,7 +563,7 @@ jobs:
           $base = "https://github.com/$repo/releases/download/$tag"
           $archs = @("x64","x86","arm64")
           foreach ($arch in $archs) {
-            $url   = "$base/tppanel-$tag-windows-$arch.zip"
+            $url   = "$base/tmuxpanel-$tag-windows-$arch.zip"
             $orig  = "installer-$arch.zip"
             $verify = "verify-$arch.zip"
             Invoke-WebRequest -Uri $url -OutFile $verify -UseBasicParsing
@@ -549,16 +592,16 @@ jobs:
           $repo = "${{ github.repository }}"
           $base = "https://github.com/$repo/releases/download/$tag"
 
-          $pkgId  = "marlocarlo.tppanel"
+          $pkgId  = "marlocarlo.tmuxpanel"
           $outDir = "winget-manifests"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
           $sha64   = "${{ steps.hashes.outputs.SHA256_X64 }}"
           $sha86   = "${{ steps.hashes.outputs.SHA256_X86 }}"
           $shaArm  = "${{ steps.hashes.outputs.SHA256_ARM64 }}"
-          $url64   = "$base/tppanel-$tag-windows-x64.zip"
-          $url86   = "$base/tppanel-$tag-windows-x86.zip"
-          $urlArm  = "$base/tppanel-$tag-windows-arm64.zip"
+          $url64   = "$base/tmuxpanel-$tag-windows-x64.zip"
+          $url86   = "$base/tmuxpanel-$tag-windows-x86.zip"
+          $urlArm  = "$base/tmuxpanel-$tag-windows-arm64.zip"
 
           # ---- Version manifest ----
           @"
@@ -579,8 +622,8 @@ jobs:
           InstallerType: zip
           NestedInstallerType: portable
           NestedInstallerFiles:
-          - RelativeFilePath: tppanel.exe
-            PortableCommandAlias: tppanel
+          - RelativeFilePath: tmuxpanel.exe
+            PortableCommandAlias: tmuxpanel
           - RelativeFilePath: tmuxplugins.exe
             PortableCommandAlias: tmuxplugins
           - RelativeFilePath: tmuxthemes.exe
@@ -607,7 +650,7 @@ jobs:
           Publisher: marlocarlo
           PublisherUrl: https://github.com/marlocarlo
           PublisherSupportUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel/issues
-          PackageName: tppanel
+          PackageName: tmuxpanel
           PackageUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel
           License: MIT
           LicenseUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel/blob/master/LICENSE
@@ -616,9 +659,9 @@ jobs:
           Description: |-
             Tmux Plugin Panel is a TUI plugin manager for tmux, providing a complete
             graphical interface to browse, install, remove, update, and theme your tmux
-            setup. Ships with tppanel, tmuxplugins, and tmuxthemes commands.
+            setup. Ships with tmuxpanel, tmuxplugins, and tmuxthemes commands.
             Supports both tmux (Linux/macOS) and PSMux (Windows).
-          Moniker: tppanel
+          Moniker: tmuxpanel
           Tags:
           - tmux
           - plugin
@@ -626,7 +669,7 @@ jobs:
           - tui
           - terminal
           - theme
-          - tppanel
+          - tmuxpanel
           - tmuxplugins
           - tmuxthemes
           ReleaseNotesUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/tag/$tag
@@ -650,4 +693,4 @@ jobs:
             exit 1
           }
           Write-Output "PR submitted to microsoft/winget-pkgs!"
-          Write-Output "Track at: https://github.com/microsoft/winget-pkgs/pulls?q=is%3Apr+marlocarlo.tppanel"
+          Write-Output "Track at: https://github.com/microsoft/winget-pkgs/pulls?q=is%3Apr+marlocarlo.tmuxpanel"

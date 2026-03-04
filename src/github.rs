@@ -47,7 +47,7 @@ fn build_client() -> Result<reqwest::Client> {
     );
     headers.insert(
         "User-Agent",
-        "tppanel/0.1".parse().unwrap(),
+        "tmuxpanel/0.1".parse().unwrap(),
     );
 
     if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN")) {

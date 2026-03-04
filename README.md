@@ -2,6 +2,8 @@
   <img src="https://img.shields.io/badge/Rust-🦀-orange?style=for-the-badge" alt="Rust">
   <img src="https://img.shields.io/badge/TUI-ratatui-blue?style=for-the-badge" alt="Ratatui">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
+  <a href="https://crates.io/crates/tmuxpanel"><img src="https://img.shields.io/crates/v/tmuxpanel?style=for-the-badge&color=fc8d62" alt="crates.io"></a>
+  <a href="https://community.chocolatey.org/packages/tmuxpanel"><img src="https://img.shields.io/chocolatey/v/tmuxpanel?style=for-the-badge&color=80b918" alt="Chocolatey"></a>
 </p>
 
 <h1 align="center">⌨️ Tmux Plugin Panel</h1>
@@ -12,12 +14,55 @@
 </p>
 
 <p align="center">
-  <code>cargo install --path .</code>&nbsp;&nbsp;→&nbsp;&nbsp;<code>tppanel</code>
+  <code>cargo install tmuxpanel</code>&nbsp;&nbsp;·&nbsp;&nbsp;<code>choco install tmuxpanel</code>&nbsp;&nbsp;·&nbsp;&nbsp;<code>scoop install tmuxpanel</code>&nbsp;&nbsp;·&nbsp;&nbsp;<code>winget install marlocarlo.tmuxpanel</code>
 </p>
 
 <p align="center">
   <img src="screenshot.png" alt="Tmux Plugin Panel screenshot" width="900">
 </p>
+
+---
+
+## Installation
+
+### Via Cargo (crates.io)
+
+```bash
+cargo install tmuxpanel
+```
+
+### Via Chocolatey
+
+```powershell
+choco install tmuxpanel
+```
+
+### Via Scoop
+
+```powershell
+scoop bucket add tmuxpanel https://github.com/marlocarlo/scoop-tmuxpanel
+scoop install tmuxpanel
+```
+
+### Via WinGet
+
+```powershell
+winget install marlocarlo.tmuxpanel
+```
+
+### From Source
+
+```bash
+git clone https://github.com/marlocarlo/Tmux-Plugin-Panel.git
+cd Tmux-Plugin-Panel
+cargo build --release
+./target/release/tmuxpanel
+```
+
+After installation, three commands are available:
+- **`tmuxpanel`** — Main TUI plugin manager
+- **`tmuxplugins`** — Opens directly to the Browse tab
+- **`tmuxthemes`** — Opens directly to the Themes browser
 
 ---
 
@@ -48,28 +93,8 @@
 
 ### Prerequisites
 
-- **Rust** toolchain (1.70+): [rustup.rs](https://rustup.rs)
 - **tmux** installed on your system (or PSMux)
 - **git** (for cloning plugins)
-
-### Install
-
-```bash
-# Clone and build
-git clone https://github.com/marlocarlo/Tmux-Plugin-Panel.git
-cd Tmux-Plugin-Panel
-cargo build --release
-
-# Run it
-./target/release/tppanel
-```
-
-Or install directly:
-
-```bash
-cargo install --path .
-tppanel
-```
 
 ### First Run
 
@@ -137,7 +162,7 @@ The registry is fetched from GitHub on startup and cached locally. An embedded c
 
 You can extend the built-in registry by adding external sources (local JSON files or remote URLs). See [REGISTRY_FORMAT.md](REGISTRY_FORMAT.md) for the full schema and setup instructions.
 
-Registry sources are configured in `~/.config/tppanel/registry_sources.json`.
+Registry sources are configured in `~/.config/tmuxpanel/registry_sources.json`.
 
 ## Tech Stack
 

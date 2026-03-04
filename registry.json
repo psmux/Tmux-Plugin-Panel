@@ -5,7 +5,7 @@
     {
       "repo": "tmux-plugins/tpm",
       "name": "TPM",
-      "description": "Tmux Plugin Manager — reference only, tppanel replaces this",
+      "description": "Tmux Plugin Manager — reference only, tmuxpanel replaces this",
       "category": "essential",
       "stars": 14200,
       "compat": ["tmux"]

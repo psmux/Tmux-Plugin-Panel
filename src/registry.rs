@@ -194,11 +194,11 @@ impl RegistrySource {
     }
 }
 
-/// Default sources file path: `~/.config/tppanel/registry_sources.json`
+/// Default sources file path: `~/.config/tmuxpanel/registry_sources.json`
 pub fn sources_config_path() -> PathBuf {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("tppanel");
+        .join("tmuxpanel");
     config_dir.join("registry_sources.json")
 }
 
@@ -680,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_load_from_file_valid() {
-        let dir = std::env::temp_dir().join("tppanel-registry-test");
+        let dir = std::env::temp_dir().join("tmuxpanel-registry-test");
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("test_registry.json");
         let content = r#"{

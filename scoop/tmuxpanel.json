@@ -1,0 +1,39 @@
+{
+    "version": "0.1.0",
+    "description": "A full-fledged TUI plugin panel for tmux — the modern alternative to TPM",
+    "homepage": "https://github.com/marlocarlo/Tmux-Plugin-Panel",
+    "license": "MIT",
+    "notes": "For automatic updates, add the bucket: scoop bucket add tmuxpanel https://github.com/marlocarlo/scoop-tmuxpanel",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v0.1.0/tmuxpanel-v0.1.0-windows-x64.zip"
+        },
+        "32bit": {
+            "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v0.1.0/tmuxpanel-v0.1.0-windows-x86.zip"
+        },
+        "arm64": {
+            "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v0.1.0/tmuxpanel-v0.1.0-windows-arm64.zip"
+        }
+    },
+    "bin": [
+        "tmuxpanel.exe",
+        "tmuxplugins.exe",
+        "tmuxthemes.exe"
+    ],
+    "checkver": {
+        "github": "https://github.com/marlocarlo/Tmux-Plugin-Panel"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v$version/tmuxpanel-v$version-windows-x64.zip"
+            },
+            "32bit": {
+                "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v$version/tmuxpanel-v$version-windows-x86.zip"
+            },
+            "arm64": {
+                "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v$version/tmuxpanel-v$version-windows-arm64.zip"
+            }
+        }
+    }
+}

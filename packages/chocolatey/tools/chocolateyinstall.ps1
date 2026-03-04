@@ -12,7 +12,7 @@
 $ErrorActionPreference = 'Stop'
 
 $toolsDir = "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)"
-$url64 = 'https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v__VERSION__/tppanel-v__VERSION__-windows-x64.zip'
+$url64 = 'https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v__VERSION__/tmuxpanel-v__VERSION__-windows-x64.zip'
 
 $packageArgs = @{
   packageName    = $env:ChocolateyPackageName
@@ -24,11 +24,11 @@ $packageArgs = @{
 
 Install-ChocolateyZipPackage @packageArgs
 
-# Create shims for tppanel, tmuxplugins, and tmuxthemes
-$tppanelPath = Join-Path $toolsDir "tppanel.exe"
+# Create shims for tmuxpanel, tmuxplugins, and tmuxthemes
+$tmuxpanelPath = Join-Path $toolsDir "tmuxpanel.exe"
 $tmuxpluginsPath = Join-Path $toolsDir "tmuxplugins.exe"
 $tmuxthemesPath = Join-Path $toolsDir "tmuxthemes.exe"
 
-Install-BinFile -Name "tppanel" -Path $tppanelPath
+Install-BinFile -Name "tmuxpanel" -Path $tmuxpanelPath
 Install-BinFile -Name "tmuxplugins" -Path $tmuxpluginsPath
 Install-BinFile -Name "tmuxthemes" -Path $tmuxthemesPath

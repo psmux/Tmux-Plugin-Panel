@@ -35,7 +35,7 @@ fn clone_from_monorepo(repo: &str, target_dir: &Path) -> Option<OpResult> {
         None => return None,
     };
 
-    let tmp_dir = std::env::temp_dir().join(format!("tppanel-monorepo-{}", org));
+    let tmp_dir = std::env::temp_dir().join(format!("tmuxpanel-monorepo-{}", org));
     let _ = force_remove_dir(&tmp_dir);
 
     let clone_url = format!("https://github.com/{}.git", monorepo_url);
@@ -587,7 +587,7 @@ pub fn preview_plugin(
     let plugin_name = repo.split('/').last().unwrap_or(repo);
 
     // Create temp directory for preview
-    let tmp_base = env::temp_dir().join("tppanel-preview");
+    let tmp_base = env::temp_dir().join("tmuxpanel-preview");
     let _ = fs::create_dir_all(&tmp_base);
     let preview_dir = tmp_base.join(format!("preview-{}", plugin_name));
 
@@ -700,7 +700,7 @@ pub fn preview_plugin(
     // Build a minimal temp config
     let conf_path = preview_dir.join(format!("{}.conf", config.config_type));
     let mut conf_lines = Vec::new();
-    conf_lines.push(format!("# tppanel preview — {} (temporary)", plugin_name));
+    conf_lines.push(format!("# tmuxpanel preview — {} (temporary)", plugin_name));
     conf_lines.push(String::new());
     conf_lines.push("set -g mouse on".to_string());
     conf_lines.push("set -g base-index 1".to_string());
@@ -888,7 +888,7 @@ pub fn preview_plugin(
     // Kill any stale preview server from a previous run so we don't get
     // "session 'preview' already exists".
     let _ = Command::new(&binary)
-        .args(["-L", "tppanel-preview", "kill-server"])
+        .args(["-L", "tmuxpanel-preview", "kill-server"])
         .output();
 
     // Launch the multiplexer with the temp config in a fully ISOLATED server.
@@ -898,11 +898,11 @@ pub fn preview_plugin(
     //   -L <socket>    creates a separate server so the preview doesn't reuse
     //                  the user's running server (which already loaded their theme)
     //
-    // Syntax: <binary> -f <config> -L tppanel-preview new-session -s preview
+    // Syntax: <binary> -f <config> -L tmuxpanel-preview new-session -s preview
     let result = Command::new(&binary)
         .args([
             "-f", &conf_path_str,
-            "-L", "tppanel-preview",
+            "-L", "tmuxpanel-preview",
             "new-session", "-s", "preview",
         ])
         .stdin(std::process::Stdio::inherit())
@@ -919,13 +919,13 @@ pub fn preview_plugin(
         // Fallback for muxes that may not support -f:
         // Start an isolated server, source the config, then attach.
         let _ = Command::new(&binary)
-            .args(["-L", "tppanel-preview", "start-server"])
+            .args(["-L", "tmuxpanel-preview", "start-server"])
             .output();
         let _ = Command::new(&binary)
-            .args(["-L", "tppanel-preview", "source-file", &conf_path_str])
+            .args(["-L", "tmuxpanel-preview", "source-file", &conf_path_str])
             .output();
         let r2 = Command::new(&binary)
-            .args(["-L", "tppanel-preview", "new-session", "-s", "preview"])
+            .args(["-L", "tmuxpanel-preview", "new-session", "-s", "preview"])
             .stdin(std::process::Stdio::inherit())
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
@@ -936,7 +936,7 @@ pub fn preview_plugin(
             Ok(status) => {
                 // Kill the isolated server before bailing
                 let _ = Command::new(&binary)
-                    .args(["-L", "tppanel-preview", "kill-server"])
+                    .args(["-L", "tmuxpanel-preview", "kill-server"])
                     .output();
                 let _ = force_remove_dir(&preview_dir);
                 return OpResult {
@@ -962,7 +962,7 @@ pub fn preview_plugin(
 
     // Kill the isolated preview server (it may linger after detach)
     let _ = Command::new(&binary)
-        .args(["-L", "tppanel-preview", "kill-server"])
+        .args(["-L", "tmuxpanel-preview", "kill-server"])
         .output();
 
     // Clean up temp files after session ends

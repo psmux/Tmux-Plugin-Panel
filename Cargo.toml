@@ -1,5 +1,5 @@
 [package]
-name = "tppanel"
+name = "tmuxpanel"
 version = "0.1.0"
 edition = "2021"
 description = "A full-fledged TUI plugin panel for tmux — the modern alternative to TPM"
@@ -18,7 +18,7 @@ exclude = [
 ]
 
 [[bin]]
-name = "tppanel"
+name = "tmuxpanel"
 path = "src/main.rs"
 
 [[bin]]

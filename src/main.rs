@@ -1,4 +1,4 @@
-/// tppanel — Tmux Plugin Panel
+/// tmuxpanel — Tmux Plugin Panel
 ///
 /// A full-fledged TUI alternative to TPM (tmux plugin manager).
 /// Browse, install, remove, and update tmux plugins and themes.

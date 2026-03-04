@@ -1,10 +1,10 @@
 # Registry Format — Tmux Plugin Panel
 
-This document describes the JSON schema for plugin registries used by **tppanel**.
+This document describes the JSON schema for plugin registries used by **tmuxpanel**.
 
 ## Overview
 
-tppanel ships with a built-in registry (`registry.json`) compiled into the binary. You can add **external registries** — local JSON files or remote URLs — to extend the available plugins and themes.
+tmuxpanel ships with a built-in registry (`registry.json`) compiled into the binary. You can add **external registries** — local JSON files or remote URLs — to extend the available plugins and themes.
 
 ## Registry JSON Schema
 
@@ -76,7 +76,7 @@ A plugin can be compatible with both — use `["tmux", "psmux"]`.
 
 ## External Registry Sources
 
-Registry sources are configured in `~/.config/tppanel/registry_sources.json`:
+Registry sources are configured in `~/.config/tmuxpanel/registry_sources.json`:
 
 ```json
 {
@@ -89,13 +89,13 @@ Registry sources are configured in `~/.config/tppanel/registry_sources.json`:
     },
     {
       "name": "My Custom Plugins",
-      "url": "/home/user/.config/tppanel/my-plugins.json",
+      "url": "/home/user/.config/tmuxpanel/my-plugins.json",
       "source_type": "local",
       "enabled": true
     },
     {
       "name": "Community Registry",
-      "url": "https://example.com/tppanel-registry.json",
+      "url": "https://example.com/tmuxpanel-registry.json",
       "source_type": "remote",
       "enabled": true
     }
@@ -141,7 +141,7 @@ Registry sources are configured in `~/.config/tppanel/registry_sources.json`:
 }
 ```
 
-2. Add it as a source in `~/.config/tppanel/registry_sources.json`:
+2. Add it as a source in `~/.config/tmuxpanel/registry_sources.json`:
 
 ```json
 {
@@ -162,11 +162,11 @@ Registry sources are configured in `~/.config/tppanel/registry_sources.json`:
 }
 ```
 
-3. Restart tppanel — your plugins will appear in the Browse tab.
+3. Restart tmuxpanel — your plugins will appear in the Browse tab.
 
 ## Validation
 
-tppanel validates registries on load. Common issues:
+tmuxpanel validates registries on load. Common issues:
 - Missing `version` field
 - `repo` not in `owner/name` format
 - Missing `compat` array

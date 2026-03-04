@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build and publish the tppanel Chocolatey package with the correct SHA256 checksum.
+    Build and publish the tmuxpanel Chocolatey package with the correct SHA256 checksum.
 
 .DESCRIPTION
     This script mirrors what the GitHub Actions release workflow does:
@@ -40,7 +40,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepoOwner = "marlocarlo"
 $RepoName = "Tmux-Plugin-Panel"
-$PackageId = "tppanel"
+$PackageId = "tmuxpanel"
 
 # --- Resolve version ---
 if (-not $Version) {
@@ -54,7 +54,7 @@ if (-not $Version) {
 }
 
 $Tag = "v$Version"
-Write-Host "=== Publishing tppanel $Tag to Chocolatey ===" -ForegroundColor Cyan
+Write-Host "=== Publishing tmuxpanel $Tag to Chocolatey ===" -ForegroundColor Cyan
 
 # --- Setup temp build directory ---
 $buildDir = Join-Path $PSScriptRoot "..\target\choco-build"
@@ -62,8 +62,8 @@ if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
 New-Item -ItemType Directory -Path "$buildDir\tools" -Force | Out-Null
 
 # --- Download release zip ---
-$zipUrl = "https://github.com/$RepoOwner/$RepoName/releases/download/$Tag/tppanel-$Tag-windows-x64.zip"
-$zipFile = Join-Path $buildDir "tppanel-release.zip"
+$zipUrl = "https://github.com/$RepoOwner/$RepoName/releases/download/$Tag/tmuxpanel-$Tag-windows-x64.zip"
+$zipFile = Join-Path $buildDir "tmuxpanel-release.zip"
 
 Write-Host "Downloading $zipUrl ..." -ForegroundColor Yellow
 try {
@@ -78,7 +78,7 @@ $hash = (Get-FileHash $zipFile -Algorithm SHA256).Hash
 Write-Host "SHA256: $hash" -ForegroundColor Green
 
 # --- Verify by re-downloading ---
-$verifyFile = Join-Path $buildDir "tppanel-verify.zip"
+$verifyFile = Join-Path $buildDir "tmuxpanel-verify.zip"
 Write-Host "Verifying checksum (re-downloading)..." -ForegroundColor Yellow
 Invoke-WebRequest -Uri $zipUrl -OutFile $verifyFile -UseBasicParsing -ErrorAction Stop
 $hash2 = (Get-FileHash $verifyFile -Algorithm SHA256).Hash
@@ -105,12 +105,12 @@ $installScript = @"
 
 Install-ChocolateyZipPackage @packageArgs
 
-# Create shims for tppanel, tmuxplugins, and tmuxthemes
-`$tppanelPath = Join-Path `$toolsDir "tppanel.exe"
+# Create shims for tmuxpanel, tmuxplugins, and tmuxthemes
+`$tmuxpanelPath = Join-Path `$toolsDir "tmuxpanel.exe"
 `$tmuxpluginsPath = Join-Path `$toolsDir "tmuxplugins.exe"
 `$tmuxthemesPath = Join-Path `$toolsDir "tmuxthemes.exe"
 
-Install-BinFile -Name "tppanel" -Path `$tppanelPath
+Install-BinFile -Name "tmuxpanel" -Path `$tmuxpanelPath
 Install-BinFile -Name "tmuxplugins" -Path `$tmuxpluginsPath
 Install-BinFile -Name "tmuxthemes" -Path `$tmuxthemesPath
 "@
@@ -119,7 +119,7 @@ Write-Host "Generated chocolateyinstall.ps1" -ForegroundColor Green
 
 # --- Generate chocolateyuninstall.ps1 ---
 $uninstallScript = @"
-Uninstall-BinFile -Name "tppanel"
+Uninstall-BinFile -Name "tmuxpanel"
 Uninstall-BinFile -Name "tmuxplugins"
 Uninstall-BinFile -Name "tmuxthemes"
 "@
@@ -132,17 +132,17 @@ $nuspec = @"
   <metadata>
     <id>$PackageId</id>
     <version>$Version</version>
-    <title>tppanel — Tmux Plugin Panel</title>
+    <title>tmuxpanel — Tmux Plugin Panel</title>
     <authors>marlocarlo</authors>
     <owners>marlocarlo</owners>
     <licenseUrl>https://github.com/$RepoOwner/$RepoName/blob/master/LICENSE</licenseUrl>
     <projectUrl>https://github.com/$RepoOwner/$RepoName</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/$RepoOwner/$RepoName/master/icon.svg</iconUrl>
+    <iconUrl>https://raw.githubusercontent.com/$RepoOwner/$RepoName/master/icon.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>A full-fledged TUI plugin panel for tmux — the modern alternative to TPM. Browse, install, remove, update, and theme your tmux from a beautiful terminal interface. Includes tppanel, tmuxplugins, and tmuxthemes commands.</description>
+    <description>A full-fledged TUI plugin panel for tmux — the modern alternative to TPM. Browse, install, remove, update, and theme your tmux from a beautiful terminal interface. Includes tmuxpanel, tmuxplugins, and tmuxthemes commands.</description>
     <summary>TUI plugin manager for tmux — browse, install, theme (TPM alternative)</summary>
     <releaseNotes>https://github.com/$RepoOwner/$RepoName/releases</releaseNotes>
-    <tags>tmux plugin manager tui terminal theme tppanel tmuxplugins tmuxthemes</tags>
+    <tags>tmux plugin manager tui terminal theme tmuxpanel tmuxplugins tmuxthemes</tags>
     <packageSourceUrl>https://github.com/$RepoOwner/$RepoName</packageSourceUrl>
     <docsUrl>https://github.com/$RepoOwner/$RepoName#readme</docsUrl>
     <bugTrackerUrl>https://github.com/$RepoOwner/$RepoName/issues</bugTrackerUrl>
@@ -152,14 +152,14 @@ $nuspec = @"
   </files>
 </package>
 "@
-Set-Content -Path "$buildDir\tppanel.nuspec" -Value $nuspec -NoNewline
-Write-Host "Generated tppanel.nuspec (v$Version)" -ForegroundColor Green
+Set-Content -Path "$buildDir\tmuxpanel.nuspec" -Value $nuspec -NoNewline
+Write-Host "Generated tmuxpanel.nuspec (v$Version)" -ForegroundColor Green
 
 # --- Pack ---
 Write-Host "`nPacking..." -ForegroundColor Cyan
 Push-Location $buildDir
 try {
-    choco pack tppanel.nuspec
+    choco pack tmuxpanel.nuspec
     $nupkg = (Get-ChildItem *.nupkg)[0]
     Write-Host "Created: $($nupkg.Name) ($([math]::Round($nupkg.Length/1KB, 1)) KB)" -ForegroundColor Green
 } finally {

@@ -631,7 +631,7 @@ pub fn reset_entire_config(config: &mut TmuxConfig) -> Result<()> {
 # ─────────────────────────────────────────────────────────────
 # PSMux Configuration — Factory Defaults
 # ─────────────────────────────────────────────────────────────
-# Reset to defaults by tppanel — Tmux Plugin Panel
+# Reset to defaults by tmuxpanel — Tmux Plugin Panel
 # For more info: https://github.com/marlocarlo/psmux
 #
 # PSMux built-in defaults are applied automatically.
@@ -706,7 +706,7 @@ pub fn reset_entire_config(config: &mut TmuxConfig) -> Result<()> {
 # ─────────────────────────────────────────────────────────────
 # tmux Configuration — Factory Defaults
 # ─────────────────────────────────────────────────────────────
-# Reset to defaults by tppanel — Tmux Plugin Panel
+# Reset to defaults by tmuxpanel — Tmux Plugin Panel
 # Official tmux source: https://github.com/tmux/tmux
 #
 # tmux built-in defaults are applied automatically.
@@ -1018,9 +1018,9 @@ pub fn parse_config(path: &Path, config_type: &str) -> Result<TmuxConfig> {
     let plugin_dir_re = Regex::new(
         r#"set-environment\s+-g\s+TMUX_PLUGIN_MANAGER_PATH\s+['"]([^'"]+)['"]\s*$"#,
     )?;
-    // tppanel managed plugin dir marker
-    let tppanel_dir_re = Regex::new(
-        r#"#\s*tppanel:plugin-dir\s+(.+)\s*$"#,
+    // tmuxpanel managed plugin dir marker
+    let tmuxpanel_dir_re = Regex::new(
+        r#"#\s*tmuxpanel:plugin-dir\s+(.+)\s*$"#,
     )?;
 
     let mut plugins = Vec::new();
@@ -1033,8 +1033,8 @@ pub fn parse_config(path: &Path, config_type: &str) -> Result<TmuxConfig> {
             install_dir = Some(expand_home(dir_str));
         }
 
-        // Check for tppanel managed dir
-        if let Some(caps) = tppanel_dir_re.captures(line) {
+        // Check for tmuxpanel managed dir
+        if let Some(caps) = tmuxpanel_dir_re.captures(line) {
             let dir_str = caps.get(1).unwrap().as_str().trim();
             install_dir = Some(expand_home(dir_str));
         }
@@ -1134,7 +1134,7 @@ pub fn add_plugin_to_config(
         } else {
             // Create managed section at end of file
             config.lines.push(String::new());
-            config.lines.push("# ── Plugins (managed by tppanel) ──────────────────────".to_string());
+            config.lines.push("# ── Plugins (managed by tmuxpanel) ──────────────────────".to_string());
             config.lines.push(new_line.clone());
             config.lines.push(activation_line);
             config.lines.push("# ── End plugins ──────────────────────────────────────".to_string());
@@ -1199,7 +1199,7 @@ pub fn remove_plugin_from_config(config: &mut TmuxConfig, repo: &str) -> Result<
     let remaining = config.plugins.iter().filter(|p| p.repo != repo).count();
     if remaining == 0 {
         config.lines.retain(|l| {
-            !l.contains("# ── Plugins (managed by tppanel)") &&
+            !l.contains("# ── Plugins (managed by tmuxpanel)") &&
             !l.contains("# ── End plugins")
         });
     }
@@ -1297,7 +1297,7 @@ pub fn create_default_config(config_type: &str) -> Result<TmuxConfig> {
         "psmux" => {
             let p = home.join(".psmux.conf");
             let c = "# PSMux configuration\n\
-                     # Managed by tppanel — Tmux Plugin Panel\n\
+                     # Managed by tmuxpanel — Tmux Plugin Panel\n\
                      #\n\
                      # For more info: https://github.com/marlocarlo/psmux\n\
                      \n\
@@ -1312,7 +1312,7 @@ pub fn create_default_config(config_type: &str) -> Result<TmuxConfig> {
         _ => {
             let p = home.join(".tmux.conf");
             let c = "# tmux configuration\n\
-                     # Managed by tppanel — Tmux Plugin Panel\n\
+                     # Managed by tmuxpanel — Tmux Plugin Panel\n\
                      #\n\
                      \n\
                      # Enable mouse\n\
@@ -1350,7 +1350,7 @@ fn has_tpm_run_line(config: &TmuxConfig) -> bool {
 }
 
 fn has_managed_section(config: &TmuxConfig) -> bool {
-    config.lines.iter().any(|l| l.contains("# ── Plugins (managed by tppanel)"))
+    config.lines.iter().any(|l| l.contains("# ── Plugins (managed by tmuxpanel)"))
 }
 
 fn find_insert_point(config: &TmuxConfig) -> usize {
@@ -1378,7 +1378,7 @@ mod tests {
 
     fn make_temp_config(content: &str, config_type: &str) -> TmuxConfig {
         let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join("tppanel-tests");
+        let dir = std::env::temp_dir().join("tmuxpanel-tests");
         let _ = fs::create_dir_all(&dir);
         let path = dir.join(format!("test-{}-{}-{}.conf", config_type, std::process::id(), id));
         fs::write(&path, content).unwrap();
@@ -1597,7 +1597,7 @@ set -g status-position top
 
         // Use a temp plugin dir so we don't touch the real one
         let temp_plugins = std::env::temp_dir()
-            .join("tppanel-tests")
+            .join("tmuxpanel-tests")
             .join(format!("plugins-{}-{}", std::process::id(), TEST_COUNTER.fetch_add(1, Ordering::SeqCst)));
         let _ = fs::create_dir_all(&temp_plugins);
         cfg.plugin_install_dir = temp_plugins.clone();
