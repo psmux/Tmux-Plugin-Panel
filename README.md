@@ -9,8 +9,13 @@
 <h1 align="center">⌨️ Tmux Plugin Panel</h1>
 
 <p align="center">
-  <b>A full-featured TUI plugin manager for tmux — the modern alternative to TPM.</b><br>
+  <b>The best way to install plugins and themes for both <a href="https://github.com/marlocarlo/psmux">PSMux</a> and Tmux.</b><br>
+  A full-featured TUI plugin manager — the modern alternative to TPM.<br>
   Browse, install, remove, update, and theme your tmux — all from a beautiful terminal interface.
+</p>
+
+<p align="center">
+  🪟 Need native tmux for PowerShell? Install <a href="https://github.com/marlocarlo/psmux"><b>PSMux</b></a> on Windows: <code>winget install psmux</code>
 </p>
 
 <p align="center">
@@ -25,30 +30,61 @@
 
 ## Installation
 
-### Via Cargo (crates.io)
+### Via Cargo (crates.io) — Windows, Linux, macOS
 
 ```bash
 cargo install tmuxpanel
 ```
 
-### Via Chocolatey
+> **Linux users:** You need a few system packages before building from source:
+>
+> **Debian / Ubuntu:**
+> ```bash
+> sudo apt install pkg-config libssl-dev build-essential
+> ```
+>
+> **Fedora / RHEL:**
+> ```bash
+> sudo dnf install pkg-config openssl-devel gcc make
+> ```
+>
+> **Arch Linux:**
+> ```bash
+> sudo pacman -S pkg-config openssl base-devel
+> ```
+
+### Via Chocolatey (Windows)
 
 ```powershell
 choco install tmuxpanel
 ```
 
-### Via Scoop
+### Via Scoop (Windows)
 
 ```powershell
 scoop bucket add tmuxpanel https://github.com/marlocarlo/scoop-tmuxpanel
 scoop install tmuxpanel
 ```
 
-### Via WinGet
+### Via WinGet (Windows)
 
 ```powershell
 winget install marlocarlo.tmuxpanel
 ```
+
+### From GitHub Releases — Pre-built binaries
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/marlocarlo/Tmux-Plugin-Panel/releases):
+
+| Platform | Archive |
+|----------|---------|
+| Windows x64 | `tmuxpanel-vX.Y.Z-windows-x64.zip` |
+| Windows x86 | `tmuxpanel-vX.Y.Z-windows-x86.zip` |
+| Windows ARM64 | `tmuxpanel-vX.Y.Z-windows-arm64.zip` |
+| Linux x64 | `tmuxpanel-vX.Y.Z-linux-x64.tar.gz` |
+| Linux ARM64 | `tmuxpanel-vX.Y.Z-linux-arm64.tar.gz` |
+| macOS x64 (Intel) | `tmuxpanel-vX.Y.Z-macos-x64.tar.gz` |
+| macOS ARM64 (Apple Silicon) | `tmuxpanel-vX.Y.Z-macos-arm64.tar.gz` |
 
 ### From Source
 
@@ -68,14 +104,14 @@ After installation, three commands are available:
 
 ## Why Tmux Plugin Panel?
 
-[TPM](https://github.com/tmux-plugins/tpm) works, but it's a shell script with no UI, no search, no browsing. **Tmux Plugin Panel** gives you a complete graphical plugin manager — think "app store for tmux" — right inside your terminal:
+[TPM](https://github.com/tmux-plugins/tpm) works, but it's a shell script with no UI, no search, no browsing. **Tmux Plugin Panel** gives you a complete graphical plugin manager — think "app store for tmux" — right inside your terminal. Works with both **tmux** on Linux/macOS and [**PSMux**](https://github.com/marlocarlo/psmux) on Windows.
 
 - **Browse** a curated registry of 40+ plugins, sorted by category and stars
 - **Search** GitHub for any tmux plugin in real-time
 - **One-key install/remove/update** — no editing config files manually
 - **Theme gallery** — preview and switch tmux themes instantly
 - **Settings editor** — toggle tmux options (mouse, status bar, keybindings) without memorizing `set -g` syntax
-- **Auto-detection** — finds tmux (and PSMux) installations, versions, and config files automatically
+- **Auto-detection** — finds tmux and [**PSMux**](https://github.com/marlocarlo/psmux) installations, versions, and config files automatically
 - **Config management** — creates, parses, and updates `tmux.conf` / `psmux.conf` for you
 - **Offline fallback** — ships with an embedded plugin registry; works without internet
 
@@ -93,7 +129,7 @@ After installation, three commands are available:
 
 ### Prerequisites
 
-- **tmux** installed on your system (or PSMux)
+- **[tmux](https://github.com/tmux/tmux)** on Linux/macOS — or **[PSMux](https://github.com/marlocarlo/psmux)** on Windows
 - **git** (for cloning plugins)
 
 ### First Run
