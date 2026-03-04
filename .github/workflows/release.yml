@@ -52,7 +52,7 @@ jobs:
             ext: ""
           # macOS
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             label: macOS x64 (Intel)
             artifact: macos-x64
             ext: ""
