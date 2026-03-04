@@ -885,6 +885,12 @@ pub fn preview_plugin(
 
     let conf_path_str = conf_path.display().to_string();
 
+    // Kill any stale preview server from a previous run so we don't get
+    // "session 'preview' already exists".
+    let _ = Command::new(&binary)
+        .args(["-L", "tppanel-preview", "kill-server"])
+        .output();
+
     // Launch the multiplexer with the temp config in a fully ISOLATED server.
     //
     // Key points:

@@ -150,6 +150,11 @@ pub struct LayoutRegions {
     pub action_buttons_area: Option<(u16, u16, u16, u16)>, // action buttons in detail
     pub body_area: Option<(u16, u16, u16, u16)>,        // full body (for Dashboard)
     pub tab_rects: Vec<(u16, u16, u16, u16)>,           // individual tab rects
+    // Precise content areas for accurate mouse hit-testing (set by rendering code)
+    pub list_content_area: Option<(u16, u16, u16, u16)>,
+    pub sidebar_content_area: Option<(u16, u16, u16, u16)>,
+    pub dashboard_cards_area: Option<(u16, u16, u16, u16)>,
+    pub settings_content_area: Option<(u16, u16, u16, u16)>,
 }
 
 /// The full application state.

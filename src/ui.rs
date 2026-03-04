@@ -60,6 +60,9 @@ fn ensure_scroll_visible(
 }
 
 pub fn draw(f: &mut Frame, app: &mut App) {
+    // Clear stale layout regions each frame (prevents wrong-tab click interception)
+    app.layout = crate::app::LayoutRegions::default();
+
     let size = f.area();
 
     // Overall layout: header(2) | divider(1) | tabs(3) | body | status(1) | footer(1)
@@ -188,7 +191,7 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &mut App) {
 
 // ── Dashboard tab ───────────────────────────────────────────────────────
 
-fn draw_dashboard_tab(f: &mut Frame, area: Rect, app: &App) {
+fn draw_dashboard_tab(f: &mut Frame, area: Rect, app: &mut App) {
     use crate::app::DashboardItem;
 
     let block = Block::default()
@@ -280,15 +283,15 @@ fn draw_dashboard_tab(f: &mut Frame, area: Rect, app: &App) {
         })
         .collect();
 
-    let cards = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(TEXT_DARK))
-                .title(Span::styled(" Quick Actions ", Style::default().fg(ACCENT).bold()))
-                .style(Style::default().bg(BG)),
-        );
+    let cards_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(TEXT_DARK))
+        .title(Span::styled(" Quick Actions ", Style::default().fg(ACCENT).bold()))
+        .style(Style::default().bg(BG));
+    let cards_inner = cards_block.inner(cards_area);
+    app.layout.dashboard_cards_area = Some((cards_inner.x, cards_inner.y, cards_inner.width, cards_inner.height));
+    let cards = List::new(items).block(cards_block);
     f.render_widget(cards, cards_area);
 
     // ── System info ───────────────────────────────────
@@ -390,11 +393,11 @@ fn draw_browse_tab(f: &mut Frame, area: Rect, app: &mut App) {
         ])
         .split(area);
 
-    draw_category_sidebar(f, cols[0], app);
+    let sidebar_content = draw_category_sidebar(f, cols[0], app);
     // Adjust scroll to keep selection visible (2 lines per item, minus search bar)
-    let list_inner_h = cols[1].height.saturating_sub(4) as usize; // border + search bar
+    let list_inner_h = cols[1].height.saturating_sub(3) as usize; // search bar (3 lines)
     ensure_scroll_visible(app.browse_selected, &mut app.browse_scroll_offset, list_inner_h, 2);
-    draw_plugin_list(f, cols[1], app, &app.browse_list, app.browse_selected, app.browse_scroll_offset, true);
+    let list_content = draw_plugin_list(f, cols[1], app, &app.browse_list, app.browse_selected, app.browse_scroll_offset, true);
     draw_detail_panel(f, cols[2], app);
 
     // Store layout regions for mouse
@@ -404,9 +407,13 @@ fn draw_browse_tab(f: &mut Frame, area: Rect, app: &mut App) {
     app.layout.list_area = Some((r.x, r.y, r.width, r.height));
     let r = cols[2];
     app.layout.detail_area = Some((r.x, r.y, r.width, r.height));
+
+    // Store precise content areas
+    app.layout.sidebar_content_area = Some((sidebar_content.x, sidebar_content.y, sidebar_content.width, sidebar_content.height));
+    app.layout.list_content_area = Some((list_content.x, list_content.y, list_content.width, list_content.height));
 }
 
-fn draw_category_sidebar(f: &mut Frame, area: Rect, app: &App) {
+fn draw_category_sidebar(f: &mut Frame, area: Rect, app: &App) -> Rect {
     let block = Block::default()
         .borders(Borders::RIGHT)
         .border_style(Style::default().fg(TEXT_DARK))
@@ -440,13 +447,15 @@ fn draw_category_sidebar(f: &mut Frame, area: Rect, app: &App) {
         ))));
     }
 
-    let list = List::new(items).block(
-        Block::default()
-            .title(Span::styled(" CATEGORIES ", Style::default().fg(ACCENT).bold()))
-            .borders(Borders::NONE)
-            .style(Style::default().bg(BG_DARK)),
-    );
+    let list_block = Block::default()
+        .title(Span::styled(" CATEGORIES ", Style::default().fg(ACCENT).bold()))
+        .borders(Borders::NONE)
+        .style(Style::default().bg(BG_DARK));
+    let content = list_block.inner(inner);
+    let list = List::new(items).block(list_block);
     f.render_widget(list, inner);
+
+    content
 }
 
 fn draw_plugin_list(
@@ -457,7 +466,7 @@ fn draw_plugin_list(
     selected: usize,
     scroll_offset: usize,
     show_search: bool,
-) {
+) -> Rect {
     let block = Block::default()
         .borders(Borders::RIGHT)
         .border_style(Style::default().fg(TEXT_DARK))
@@ -557,6 +566,8 @@ fn draw_plugin_list(
 
     let list = List::new(items);
     f.render_widget(list, list_area);
+
+    list_area
 }
 
 // ── Detail panel ────────────────────────────────────────────────────────
@@ -827,9 +838,9 @@ fn draw_installed_tab(f: &mut Frame, area: Rect, app: &mut App) {
     // Store layout regions for mouse
     let r = cols[0];
     app.layout.list_area = Some((r.x, r.y, r.width, r.height));
+    app.layout.list_content_area = Some((list_inner.x, list_inner.y, list_inner.width, list_inner.height));
     let r = cols[1];
     app.layout.detail_area = Some((r.x, r.y, r.width, r.height));
-    app.layout.sidebar_area = None; // Installed tab has no sidebar
 }
 
 // ── Settings tab (was Config) ────────────────────────────────────────────
@@ -973,6 +984,7 @@ fn draw_settings_list(f: &mut Frame, area: Rect, app: &mut App, cfg: &TmuxConfig
 
     // Settings list
     let list_area = layout[1];
+    app.layout.settings_content_area = Some((list_area.x, list_area.y, list_area.width, list_area.height));
     let visible_height = list_area.height as usize;
     ensure_scroll_visible(app.settings_selected, &mut app.settings_scroll_offset, visible_height, 2);
     let filtered = app.filtered_settings();

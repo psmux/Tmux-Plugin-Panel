@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#0a0a1a;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00cc66;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#009a00;stop-opacity:1"/>
+    </linearGradient>
+  </defs>
+  <!-- Background rounded square -->
+  <rect x="4" y="4" width="120" height="120" rx="20" ry="20" fill="url(#bg)" stroke="#00cc66" stroke-width="3"/>
+  <!-- Terminal window frame -->
+  <rect x="18" y="22" width="92" height="68" rx="6" ry="6" fill="none" stroke="#00cc66" stroke-width="2.5"/>
+  <!-- Title bar dots -->
+  <circle cx="30" cy="30" r="3" fill="#ff5f56"/>
+  <circle cx="40" cy="30" r="3" fill="#ffbd2e"/>
+  <circle cx="50" cy="30" r="3" fill="#27c93f"/>
+  <!-- Plugin grid lines (3x2 grid inside terminal) -->
+  <rect x="24" y="40" width="25" height="18" rx="3" ry="3" fill="#009a00" opacity="0.7"/>
+  <rect x="52" y="40" width="25" height="18" rx="3" ry="3" fill="#009a00" opacity="0.5"/>
+  <rect x="80" y="40" width="25" height="18" rx="3" ry="3" fill="#009a00" opacity="0.3"/>
+  <rect x="24" y="62" width="25" height="18" rx="3" ry="3" fill="#009a00" opacity="0.5"/>
+  <rect x="52" y="62" width="25" height="18" rx="3" ry="3" fill="#009a00" opacity="0.3"/>
+  <rect x="80" y="62" width="25" height="18" rx="3" ry="3" fill="#009a00" opacity="0.7"/>
+  <!-- TPP text -->
+  <text x="64" y="112" font-family="monospace" font-size="18" font-weight="bold" fill="#00cc66" text-anchor="middle">TPP</text>
+</svg>

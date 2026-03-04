@@ -37,6 +37,19 @@ async fn main() -> Result<()> {
     let mut app = App::new();
     app.load_config();
     app.load_registry();
+
+    // Auto-navigate based on binary name (tmuxplugins → Browse, tmuxthemes → Themes)
+    if let Some(name) = std::env::current_exe().ok().and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_lowercase())) {
+        if name == "tmuxthemes" {
+            app.tab = Tab::Browse;
+            app.browse_category_index = 2; // Theme category
+            app.browse_category = Some(registry::Category::Theme);
+            app.refresh_browse();
+        } else if name == "tmuxplugins" {
+            app.tab = Tab::Browse;
+        }
+    }
+
     // ── Main loop ──────────────────────────────────────────────────
     let result = run_app(&mut terminal, &mut app).await;
 
@@ -163,16 +176,9 @@ async fn handle_mouse_event(app: &mut App, mouse: crossterm::event::MouseEvent) 
         MouseEventKind::Down(MouseButton::Left) => {
             // ── Confirmation dialog: handle button clicks ──────
             if app.confirm.is_some() {
-                // Simple left/right split for Cancel/Confirm buttons
-                // The dialog is centered, so approximate
                 if let Some(ref mut dialog) = app.confirm {
-                    // Just toggle and let keyboard Enter confirm
-                    let center_x = 25u16; // approximate dialog center
-                    if x > center_x {
-                        dialog.confirm_selected = true;
-                    } else {
-                        dialog.confirm_selected = false;
-                    }
+                    let center_x = 25u16;
+                    dialog.confirm_selected = x > center_x;
                 }
                 return;
             }
@@ -189,13 +195,11 @@ async fn handle_mouse_event(app: &mut App, mouse: crossterm::event::MouseEvent) 
                 }
             }
 
-            // ── Dashboard clicks ───────────────────────────────
+            // ── Dashboard clicks (precise content area) ────────
             if app.tab == Tab::Dashboard {
-                if hit_test(x, y, &app.layout.body_area) {
-                    // Map y position to dashboard item (approximate: each card is ~2 lines)
-                    if let Some((_, by, _, _)) = app.layout.body_area {
-                        let relative_y = y.saturating_sub(by + 6); // offset for welcome + spacer
-                        let item_idx = (relative_y / 2) as usize;
+                if let Some((cx, cy, cw, ch)) = app.layout.dashboard_cards_area {
+                    if x >= cx && x < cx + cw && y >= cy && y < cy + ch {
+                        let item_idx = ((y - cy) / 2) as usize;
                         let len = app::DashboardItem::ALL.len();
                         if item_idx < len {
                             app.dashboard_selected = item_idx;
@@ -206,99 +210,93 @@ async fn handle_mouse_event(app: &mut App, mouse: crossterm::event::MouseEvent) 
                 return;
             }
 
-            // ── Category sidebar clicks (Browse tab) ───────────
-            if app.tab == Tab::Browse && hit_test(x, y, &app.layout.sidebar_area) {
-                if let Some((_, sy, _, _)) = app.layout.sidebar_area {
-                    let relative_y = y.saturating_sub(sy + 2); // account for block title
-                    let cat_idx = relative_y as usize;
-                    let max_cats = Category::ALL.len() + 1; // +1 for "All"
-                    if cat_idx < max_cats {
-                        app.browse_category_index = cat_idx;
-                        app.browse_category = if cat_idx == 0 {
-                            None
-                        } else {
-                            Some(Category::ALL[cat_idx - 1])
-                        };
-                        app.refresh_browse();
-                    }
-                }
-                return;
-            }
-
-            // ── Plugin list clicks ─────────────────────────────
-            if hit_test(x, y, &app.layout.list_area) {
-                if let Some((_, ly, _, _)) = app.layout.list_area {
-                    let relative_y = y.saturating_sub(ly);
-                    // Account for search bar in browse tab (3 lines: border + input + border area)
-                    let offset_y = if app.tab == Tab::Browse {
-                        relative_y.saturating_sub(3)
-                    } else {
-                        relative_y
-                    };
-                    let item_idx = (offset_y / 2) as usize; // 2 lines per item
-                    let scroll = match app.tab {
-                        Tab::Browse => app.browse_scroll_offset,
-                        Tab::Installed => app.installed_scroll_offset,
-                        _ => 0,
-                    };
-                    let actual_idx = scroll + item_idx;
-                    let len = app.current_list_len();
-                    if actual_idx < len {
-                        let sel = app.selected_mut();
-                        *sel = actual_idx;
-                        app.detail_scroll_offset = 0;
-                    }
-                }
-                return;
-            }
-
-            // ── Detail panel / Action button clicks ────────────
-            if hit_test(x, y, &app.layout.detail_area) {
-                if let Some((dx, dy, _dw, _)) = app.layout.detail_area {
-                    let relative_y = y.saturating_sub(dy);
-                    // Action buttons are at approximately y offset 7-9 (name:2 + repo:1 + desc:2 + meta:1 + gap ≈ 7)
-                    if relative_y >= 6 && relative_y <= 8 {
-                        // Determine which button was clicked based on x position
-                        let relative_x = x.saturating_sub(dx);
-                        if let Some(repo) = app.selected_repo() {
-                            let is_installed = app.installed_repos.contains(&repo);
-                            if is_installed {
-                                // Buttons: Update(2-12) Uninstall(14-27) Preview(29-39) README(41-51) Activate(53-65)
-                                if relative_x >= 2 && relative_x < 13 {
-                                    handle_mouse_update(app, &repo);
-                                } else if relative_x >= 14 && relative_x < 28 {
-                                    handle_mouse_uninstall(app, &repo);
-                                } else if relative_x >= 29 && relative_x < 40 {
-                                    handle_mouse_preview(app, &repo);
-                                } else if relative_x >= 41 && relative_x < 52 {
-                                    handle_mouse_readme(app, &repo).await;
-                                } else if relative_x >= 53 && app.is_theme_plugin(&repo) {
-                                    handle_mouse_activate_theme(app, &repo);
-                                }
+            // ── Category sidebar clicks (Browse tab, precise content area) ──
+            if app.tab == Tab::Browse {
+                if let Some((cx, cy, cw, ch)) = app.layout.sidebar_content_area {
+                    if x >= cx && x < cx + cw && y >= cy && y < cy + ch {
+                        let cat_idx = (y - cy) as usize;
+                        let max_cats = Category::ALL.len() + 1; // +1 for "All"
+                        if cat_idx < max_cats {
+                            app.browse_category_index = cat_idx;
+                            app.browse_category = if cat_idx == 0 {
+                                None
                             } else {
-                                // Buttons: Install(2-13) Preview(15-25) README(27-37) Activate(39-51)
-                                if relative_x >= 2 && relative_x < 14 {
-                                    handle_mouse_install(app, &repo);
-                                } else if relative_x >= 15 && relative_x < 26 {
-                                    handle_mouse_preview(app, &repo);
-                                } else if relative_x >= 27 && relative_x < 38 {
-                                    handle_mouse_readme(app, &repo).await;
-                                } else if relative_x >= 39 && app.is_theme_plugin(&repo) {
-                                    handle_mouse_activate_theme(app, &repo);
+                                Some(Category::ALL[cat_idx - 1])
+                            };
+                            app.refresh_browse();
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // ── Plugin list clicks (precise content area, Browse/Installed only) ──
+            if matches!(app.tab, Tab::Browse | Tab::Installed) {
+                if let Some((cx, cy, cw, ch)) = app.layout.list_content_area {
+                    if x >= cx && x < cx + cw && y >= cy && y < cy + ch {
+                        let item_idx = ((y - cy) / 2) as usize;
+                        let scroll = match app.tab {
+                            Tab::Browse => app.browse_scroll_offset,
+                            Tab::Installed => app.installed_scroll_offset,
+                            _ => 0,
+                        };
+                        let actual_idx = scroll + item_idx;
+                        let len = app.current_list_len();
+                        if actual_idx < len {
+                            let sel = app.selected_mut();
+                            *sel = actual_idx;
+                            app.detail_scroll_offset = 0;
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // ── Detail panel / Action button clicks (Browse/Installed only) ──
+            if matches!(app.tab, Tab::Browse | Tab::Installed) {
+                if hit_test(x, y, &app.layout.detail_area) {
+                    if let Some((dx, dy, _dw, _)) = app.layout.detail_area {
+                        let relative_y = y.saturating_sub(dy);
+                        // Action buttons at y offset 6-8
+                        if relative_y >= 6 && relative_y <= 8 {
+                            let relative_x = x.saturating_sub(dx);
+                            if let Some(repo) = app.selected_repo() {
+                                let is_installed = app.installed_repos.contains(&repo);
+                                if is_installed {
+                                    if relative_x >= 2 && relative_x < 13 {
+                                        handle_mouse_update(app, &repo);
+                                    } else if relative_x >= 14 && relative_x < 28 {
+                                        handle_mouse_uninstall(app, &repo);
+                                    } else if relative_x >= 29 && relative_x < 40 {
+                                        handle_mouse_preview(app, &repo);
+                                    } else if relative_x >= 41 && relative_x < 52 {
+                                        handle_mouse_readme(app, &repo).await;
+                                    } else if relative_x >= 53 && app.is_theme_plugin(&repo) {
+                                        handle_mouse_activate_theme(app, &repo);
+                                    }
+                                } else {
+                                    if relative_x >= 2 && relative_x < 14 {
+                                        handle_mouse_install(app, &repo);
+                                    } else if relative_x >= 15 && relative_x < 26 {
+                                        handle_mouse_preview(app, &repo);
+                                    } else if relative_x >= 27 && relative_x < 38 {
+                                        handle_mouse_readme(app, &repo).await;
+                                    } else if relative_x >= 39 && app.is_theme_plugin(&repo) {
+                                        handle_mouse_activate_theme(app, &repo);
+                                    }
                                 }
                             }
                         }
                     }
+                    return;
                 }
-                return;
             }
 
-            // ── Config tab list clicks ─────────────────────────
+            // ── Config tab list clicks (precise settings content area) ──
             if app.tab == Tab::Config {
-                if hit_test(x, y, &app.layout.body_area) {
-                    if let Some((_, by, _, _)) = app.layout.body_area {
-                        let relative_y = y.saturating_sub(by + 3); // header offset
-                        let item_idx = (relative_y / 2) as usize + app.settings_scroll_offset;
+                if let Some((cx, cy, cw, ch)) = app.layout.settings_content_area {
+                    if x >= cx && x < cx + cw && y >= cy && y < cy + ch {
+                        let item_idx = ((y - cy) / 2) as usize + app.settings_scroll_offset;
                         let len = app.filtered_settings().len();
                         if item_idx < len {
                             app.settings_selected = item_idx;
@@ -309,19 +307,19 @@ async fn handle_mouse_event(app: &mut App, mouse: crossterm::event::MouseEvent) 
         }
 
         MouseEventKind::Down(MouseButton::Right) => {
-            // Right-click on a plugin → show context menu (uninstall/remove)
-            if let Some(repo) = app.selected_repo() {
-                if app.installed_repos.contains(&repo) {
-                    handle_mouse_uninstall(app, &repo);
+            if matches!(app.tab, Tab::Browse | Tab::Installed) {
+                if let Some(repo) = app.selected_repo() {
+                    if app.installed_repos.contains(&repo) {
+                        handle_mouse_uninstall(app, &repo);
+                    }
                 }
             }
         }
 
         MouseEventKind::ScrollUp => {
-            // Scroll the list or readme
             if hit_test(x, y, &app.layout.detail_area) {
                 app.detail_scroll_offset = app.detail_scroll_offset.saturating_sub(3);
-            } else if hit_test(x, y, &app.layout.list_area) || hit_test(x, y, &app.layout.body_area) {
+            } else {
                 app.move_selection(-3);
             }
         }
@@ -329,14 +327,12 @@ async fn handle_mouse_event(app: &mut App, mouse: crossterm::event::MouseEvent) 
         MouseEventKind::ScrollDown => {
             if hit_test(x, y, &app.layout.detail_area) {
                 app.detail_scroll_offset = app.detail_scroll_offset.saturating_add(3);
-            } else if hit_test(x, y, &app.layout.list_area) || hit_test(x, y, &app.layout.body_area) {
+            } else {
                 app.move_selection(3);
             }
         }
 
-        MouseEventKind::Moved | MouseEventKind::Drag(_) => {
-            // Could add hover effects later
-        }
+        MouseEventKind::Moved | MouseEventKind::Drag(_) => {}
 
         _ => {}
     }

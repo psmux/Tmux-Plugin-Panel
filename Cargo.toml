@@ -5,7 +5,29 @@ edition = "2021"
 description = "A full-fledged TUI plugin panel for tmux — the modern alternative to TPM"
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/marlocarlo/Tmux-Plugin-Panel"
 keywords = ["tmux", "plugin", "manager", "tui", "terminal"]
+categories = ["command-line-utilities"]
+exclude = [
+    "target/",
+    "packages/",
+    "scoop/",
+    "scripts/",
+    ".github/",
+    "icon.svg",
+]
+
+[[bin]]
+name = "tppanel"
+path = "src/main.rs"
+
+[[bin]]
+name = "tmuxplugins"
+path = "src/main.rs"
+
+[[bin]]
+name = "tmuxthemes"
+path = "src/main.rs"
 
 [dependencies]
 ratatui = "0.29"
