@@ -10,6 +10,18 @@ use anyhow::{Context, Result};
 use regex::Regex;
 
 
+/// Convert an absolute path to a tilde-relative path (e.g. `C:\Users\x\...` → `~\...`).
+/// This makes source-file / run-shell lines portable across environments.
+fn to_tilde_path(p: &Path) -> String {
+    let s = p.display().to_string();
+    if let Some(home) = dirs::home_dir() {
+        let h = home.display().to_string();
+        if s.starts_with(&h) {
+            return format!("~{}", &s[h.len()..]);
+        }
+    }
+    s
+}
 
 // ── Plugin entry ────────────────────────────────────────────────────────
 
@@ -1110,15 +1122,15 @@ pub fn add_plugin_to_config(
         let activation_line = if config.config_type == "psmux" && plugin_conf.exists() {
             // PSMux themes/plugins with plugin.conf — most reliable:
             // source-file applies set-g directives during config load.
-            format!("source-file '{}'", plugin_conf.display())
+            format!("source-file '{}'", to_tilde_path(&plugin_conf))
         } else if config.config_type == "psmux" && entry_ps1.exists() {
             // PSMux plugin with .ps1 entry — run it
-            format!("run-shell '{}'", entry_ps1.display())
+            format!("run-shell '{}'", to_tilde_path(&entry_ps1))
         } else {
             // Default (tmux): run-shell with .tmux entry script
             format!(
                 "run-shell '{}/{}/{}.tmux'",
-                config.plugin_install_dir.display(),
+                to_tilde_path(&config.plugin_install_dir),
                 plugin_name,
                 plugin_name,
             )
@@ -1258,13 +1270,13 @@ pub fn repair_missing_activation_lines(config: &mut TmuxConfig) -> usize {
         let entry_tmux = plugin_dir.join(format!("{}.tmux", plugin_name));
 
         let activation_line = if config.config_type == "psmux" && plugin_conf.exists() {
-            format!("source-file '{}'", plugin_conf.display())
+            format!("source-file '{}'", to_tilde_path(&plugin_conf))
         } else if config.config_type == "psmux" && entry_ps1.exists() {
-            format!("run-shell '{}'", entry_ps1.display())
+            format!("run-shell '{}'", to_tilde_path(&entry_ps1))
         } else if entry_tmux.exists() {
-            format!("run-shell '{}'", entry_tmux.display())
+            format!("run-shell '{}'", to_tilde_path(&entry_tmux))
         } else if entry_ps1.exists() {
-            format!("run-shell '{}'", entry_ps1.display())
+            format!("run-shell '{}'", to_tilde_path(&entry_ps1))
         } else {
             continue; // no known entry point, skip
         };
