@@ -133,7 +133,7 @@ $nuspec = @"
     <id>$PackageId</id>
     <version>$Version</version>
     <title>tmuxpanel — Tmux Plugin Panel</title>
-    <authors>marlocarlo</authors>
+    <authors>Godwin Sam Josh</authors>
     <owners>marlocarlo</owners>
     <licenseUrl>https://github.com/$RepoOwner/$RepoName/blob/master/LICENSE</licenseUrl>
     <projectUrl>https://github.com/$RepoOwner/$RepoName</projectUrl>

@@ -406,7 +406,7 @@ jobs:
               <id>tmuxpanel</id>
               <version>$ver</version>
               <title>tmuxpanel — Tmux Plugin Panel</title>
-              <authors>marlocarlo</authors>
+              <authors>Godwin Sam Josh</authors>
               <owners>marlocarlo</owners>
               <licenseUrl>https://github.com/${{ github.repository }}/blob/master/LICENSE</licenseUrl>
               <projectUrl>https://github.com/${{ github.repository }}</projectUrl>
@@ -720,7 +720,7 @@ jobs:
           PackageUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel
           License: MIT
           LicenseUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel/blob/master/LICENSE
-          Copyright: Copyright (c) marlocarlo
+          Copyright: Copyright (c) Godwin Sam Josh
           ShortDescription: A full-fledged TUI plugin panel for tmux — the modern alternative to TPM
           Description: |-
             Tmux Plugin Panel is a TUI plugin manager for tmux, providing a complete
