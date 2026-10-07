@@ -19,6 +19,8 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    # Code sign Windows binaries on release tags.
+    environment: ${{ github.ref_type == 'tag' && 'windows-signing' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -80,6 +82,29 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      # Parallel legs sign one at a time.
+      - name: Stagger signing
+        if: runner.os == 'Windows' && github.ref_type == 'tag'
+        shell: pwsh
+        run: Start-Sleep -Seconds (35 * ${{ strategy.job-index }})
+
+      - name: Log in to Certum
+        id: certum
+        if: runner.os == 'Windows' && github.ref_type == 'tag'
+        uses: jay0lee/certum-cloud-code-sign@a3324503499c49090869856eeeecfe95fb613d87
+        with:
+          username: ${{ secrets.CERTUM_USERNAME }}
+          totp_secret: ${{ secrets.CERTUM_TOTP_SECRET }}
+          totp_algorithm: ${{ vars.CERTUM_TOTP_ALGORITHM || 'SHA-256' }}
+
+      - name: Sign binaries
+        if: steps.certum.outcome == 'success'
+        shell: pwsh
+        run: |
+          $dir = "target/${{ matrix.target }}/release"
+          & "${{ steps.certum.outputs.signtool-path }}" sign /sha1 ${{ steps.certum.outputs.cert-thumbprint }} /tr http://time.certum.pl /td SHA256 /fd SHA256 /d "Tmux Plugin Panel" "$dir/tmuxpanel.exe" "$dir/tmuxplugins.exe" "$dir/tmuxthemes.exe"
+          if ($LASTEXITCODE -ne 0) { throw "signtool could not sign the binaries" }
+
       - name: Create release package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -112,6 +137,25 @@ jobs:
           }
           Write-Output "Zip contains: $($entries -join ', ')"
 
+      - name: Verify signatures
+        if: runner.os == 'Windows' && github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $signtool = "${{ steps.certum.outputs.signtool-path }}"
+          if (-not $signtool) { Write-Host "::error::signtool is not available"; exit 1 }
+          $zip = Get-Item "tmuxpanel-*-${{ matrix.artifact }}.zip"
+          Expand-Archive -Path $zip.FullName -DestinationPath zip-check -Force
+          $dir = "target/${{ matrix.target }}/release"
+          $bad = 0
+          foreach ($bin in @("tmuxpanel", "tmuxplugins", "tmuxthemes")) {
+            foreach ($f in @("$dir/$bin.exe", "zip-check/$bin.exe")) {
+              & $signtool verify /pa /q $f
+              if ($LASTEXITCODE -ne 0) { Write-Host "::error::not signed: $f"; $bad = 1 }
+              else { Write-Host "signed: $f" }
+            }
+          }
+          if ($bad) { exit 1 }
+
       - name: Create release package (Linux / macOS)
         if: runner.os != 'Windows'
         shell: bash
@@ -142,6 +186,10 @@ jobs:
           path: |
             tmuxpanel-*-${{ matrix.artifact }}.zip
             tmuxpanel-*-${{ matrix.artifact }}.tar.gz
+
+      - name: Log out of Certum
+        if: always() && steps.certum.outcome != 'skipped' && steps.certum.outcome != ''
+        uses: jay0lee/certum-cloud-code-sign/teardown@a3324503499c49090869856eeeecfe95fb613d87
 
   release:
     name: Create Release
