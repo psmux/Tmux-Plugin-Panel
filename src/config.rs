@@ -1079,11 +1079,18 @@ pub fn parse_config(path: &Path, config_type: &str) -> Result<TmuxConfig> {
     })
 }
 
+/// Expand a leading `~` or `$HOME` to the home directory. A `~` anywhere
+/// else is left alone: Windows 8.3 short names such as `RUNNER~1` contain one.
 fn expand_home(p: &str) -> PathBuf {
-    let home = dirs::home_dir().unwrap_or_default();
-    let expanded = p.replace('~', &home.display().to_string());
-    let expanded = expanded.replace("$HOME", &home.display().to_string());
-    PathBuf::from(expanded)
+    let home = dirs::home_dir().unwrap_or_default().display().to_string();
+    for prefix in ["~", "$HOME"] {
+        if let Some(rest) = p.strip_prefix(prefix) {
+            if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') {
+                return PathBuf::from(format!("{}{}", home, rest));
+            }
+        }
+    }
+    PathBuf::from(p)
 }
 
 // ── Config modification ─────────────────────────────────────────────────
@@ -1991,6 +1998,17 @@ set -g status-position top
         let after = fs::read_to_string(&cfg.path).unwrap();
         assert!(after.contains(&run_shell_line(&dir, "tmux-sensible", "sensible.tmux")), "{}", after);
         cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_expand_home_only_leading_tilde() {
+        let home = dirs::home_dir().unwrap().display().to_string();
+        assert_eq!(expand_home("~/.tmux/plugins"), PathBuf::from(format!("{}/.tmux/plugins", home)));
+        assert_eq!(expand_home("$HOME/x"), PathBuf::from(format!("{}/x", home)));
+        assert_eq!(expand_home("~"), PathBuf::from(&home));
+        // 8.3 short names (e.g. the CI runner's temp dir) keep their tilde
+        assert_eq!(expand_home(r"C:\Users\RUNNER~1\AppData\x.tmux"), PathBuf::from(r"C:\Users\RUNNER~1\AppData\x.tmux"));
+        assert_eq!(expand_home("~user/x"), PathBuf::from("~user/x"));
     }
 
     #[test]
