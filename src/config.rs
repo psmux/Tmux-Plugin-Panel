@@ -1098,6 +1098,9 @@ pub fn add_plugin_to_config(
     branch: Option<&str>,
 ) -> Result<bool> {
     if config.plugins.iter().any(|p| p.repo == repo) {
+        // Already declared. Still make sure it has a working activation line,
+        // so removing and re-adding a plugin fixes a missing/broken one.
+        repair_missing_activation_lines(config);
         return Ok(false);
     }
 
@@ -1115,40 +1118,27 @@ pub fn add_plugin_to_config(
     } else {
         // Non-TPM (psmux or standalone): use managed section with
         // source-file or run-shell depending on what the plugin provides.
-        let plugin_dir = config.plugin_install_dir.join(plugin_name);
-        let plugin_conf = plugin_dir.join("plugin.conf");
-        let entry_ps1 = plugin_dir.join(format!("{}.ps1", plugin_name));
-
-        let activation_line = if config.config_type == "psmux" && plugin_conf.exists() {
-            // PSMux themes/plugins with plugin.conf — most reliable:
-            // source-file applies set-g directives during config load.
-            format!("source-file '{}'", to_tilde_path(&plugin_conf))
-        } else if config.config_type == "psmux" && entry_ps1.exists() {
-            // PSMux plugin with .ps1 entry — run it
-            format!("run-shell '{}'", to_tilde_path(&entry_ps1))
-        } else {
-            // Default (tmux): run-shell with .tmux entry script
-            format!(
-                "run-shell '{}/{}/{}.tmux'",
-                to_tilde_path(&config.plugin_install_dir),
-                plugin_name,
-                plugin_name,
-            )
-        };
+        // If no entry point can be found on disk we write only the @plugin
+        // line rather than a run-shell path that does not exist.
+        let activation_line = activation_line_for(config, plugin_name);
 
         if has_managed_section(config) {
             // Insert before the "End plugins" marker
             let end_pos = config.lines.iter()
                 .position(|l| l.contains("# ── End plugins"))
                 .unwrap_or(config.lines.len());
-            config.lines.insert(end_pos, activation_line);
+            if let Some(a) = activation_line {
+                config.lines.insert(end_pos, a);
+            }
             config.lines.insert(end_pos, new_line.clone());
         } else {
             // Create managed section at end of file
             config.lines.push(String::new());
             config.lines.push("# ── Plugins (managed by tmuxpanel) ──────────────────────".to_string());
             config.lines.push(new_line.clone());
-            config.lines.push(activation_line);
+            if let Some(a) = activation_line {
+                config.lines.push(a);
+            }
             config.lines.push("# ── End plugins ──────────────────────────────────────".to_string());
         }
     }
@@ -1186,12 +1176,10 @@ pub fn remove_plugin_from_config(config: &mut TmuxConfig, repo: &str) -> Result<
                 indices_to_remove.push(i);
             }
         }
-        // run-shell line for this plugin
-        if line.contains("run-shell") && line.contains(plugin_name) {
-            indices_to_remove.push(i);
-        }
-        // source-file line for this plugin (psmux themes use source-file 'plugin.conf')
-        if line.contains("source-file") && line.contains(plugin_name) {
+        // run-shell / source-file line for this plugin. Matched on the path's
+        // directory, never by substring: "catppuccin/tmux" has the short name
+        // "tmux", which is a substring of nearly every activation line.
+        if line_activates_plugin(line, &config.plugin_install_dir, plugin_name) {
             indices_to_remove.push(i);
         }
     }
@@ -1222,15 +1210,15 @@ pub fn remove_plugin_from_config(config: &mut TmuxConfig, repo: &str) -> Result<
     Ok(true)
 }
 
-/// Repair missing activation lines for @plugin entries.
+/// Repair missing or broken activation lines for @plugin entries.
 ///
-/// Scans the config for `set -g @plugin 'org/name'` entries that have no
-/// corresponding `source-file` or `run-shell` line referencing the plugin.
-/// For each such entry, generates the correct activation line based on
-/// what's on disk (plugin.conf → source-file, .ps1 → run-shell, .tmux → run-shell).
+/// For each `set -g @plugin 'org/name'` entry in a non-TPM config, checks
+/// that a `source-file` / `run-shell` line for that plugin exists and points
+/// at a file that is really there. Lines that point at a missing file are
+/// replaced with one built from what is on disk (see [`activation_line_for`]).
 ///
 /// Only operates on non-TPM configs (psmux or configs without `run '~/.tmux/plugins/tpm/tpm'`).
-/// Returns the number of lines repaired.
+/// Returns the number of plugins repaired.
 pub fn repair_missing_activation_lines(config: &mut TmuxConfig) -> usize {
     // Only repair non-TPM configs. TPM handles activation via its run line.
     if has_tpm_run_line(config) {
@@ -1239,8 +1227,8 @@ pub fn repair_missing_activation_lines(config: &mut TmuxConfig) -> usize {
 
     let mut repaired = 0;
 
-    // For each plugin, check if there's an activation line
     let plugin_names: Vec<(String, String)> = config.plugins.iter()
+        .filter(|p| p.enabled)
         .map(|p| {
             let short = p.repo.split('/').last().unwrap_or(&p.repo).to_string();
             (p.repo.clone(), short)
@@ -1248,44 +1236,33 @@ pub fn repair_missing_activation_lines(config: &mut TmuxConfig) -> usize {
         .collect();
 
     for (repo, plugin_name) in &plugin_names {
-        // Check if there's already an activation line for this plugin
-        let has_activation = config.lines.iter().any(|l| {
-            let lt = l.trim();
-            (lt.starts_with("source-file") || lt.starts_with("run-shell") || lt.starts_with("run "))
-                && lt.contains(plugin_name.as_str())
-        });
+        let ours: Vec<usize> = config.lines.iter().enumerate()
+            .filter(|(_, l)| line_activates_plugin(l, &config.plugin_install_dir, plugin_name))
+            .map(|(i, _)| i)
+            .collect();
 
-        if has_activation {
+        // A line we cannot resolve to a path (e.g. uses a variable) counts as working.
+        let working = ours.iter().any(|&i| line_target_ok(&config.lines[i]));
+        if working {
             continue;
         }
 
-        // No activation line — generate one based on what's on disk
         let plugin_dir = config.plugin_install_dir.join(plugin_name);
         if !plugin_dir.is_dir() {
             continue; // plugin not installed, nothing to repair
         }
-
-        let plugin_conf = plugin_dir.join("plugin.conf");
-        let entry_ps1 = plugin_dir.join(format!("{}.ps1", plugin_name));
-        let entry_tmux = plugin_dir.join(format!("{}.tmux", plugin_name));
-
-        let activation_line = if config.config_type == "psmux" && plugin_conf.exists() {
-            format!("source-file '{}'", to_tilde_path(&plugin_conf))
-        } else if config.config_type == "psmux" && entry_ps1.exists() {
-            format!("run-shell '{}'", to_tilde_path(&entry_ps1))
-        } else if entry_tmux.exists() {
-            format!("run-shell '{}'", to_tilde_path(&entry_tmux))
-        } else if entry_ps1.exists() {
-            format!("run-shell '{}'", to_tilde_path(&entry_ps1))
-        } else {
-            continue; // no known entry point, skip
+        let activation_line = match activation_line_for(config, plugin_name) {
+            Some(a) => a,
+            None => continue, // no known entry point, leave as is
         };
 
-        // Find the @plugin line for this repo and insert after it
+        // Drop the broken lines, then insert after the @plugin line.
+        for &i in ours.iter().rev() {
+            config.lines.remove(i);
+        }
         let plugin_line_idx = config.lines.iter().position(|l| {
-            l.contains("@plugin") && l.contains(repo.as_str())
+            plugin_line_repo(l).as_deref() == Some(repo.as_str())
         });
-
         if let Some(idx) = plugin_line_idx {
             config.lines.insert(idx + 1, activation_line);
             repaired += 1;
@@ -1297,6 +1274,187 @@ pub fn repair_missing_activation_lines(config: &mut TmuxConfig) -> usize {
     }
 
     repaired
+}
+
+// ── Plugin entry points ─────────────────────────────────────────────────
+
+/// Whether a plugin's activation line is in place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivationStatus {
+    /// TPM config, or a line exists and its target file is on disk.
+    Ok,
+    /// Plugin is installed but has no entry script we could find.
+    NoEntryScript,
+    /// Plugin is installed and has an entry script, but no working line.
+    Missing,
+    /// Plugin directory is not on disk.
+    NotInstalled,
+}
+
+/// Report whether `repo` will actually load from this config.
+pub fn plugin_activation_status(config: &TmuxConfig, repo: &str) -> ActivationStatus {
+    if has_tpm_run_line(config) {
+        return ActivationStatus::Ok;
+    }
+    let plugin_name = repo.split('/').last().unwrap_or(repo);
+    let working = config.lines.iter()
+        .filter(|l| line_activates_plugin(l, &config.plugin_install_dir, plugin_name))
+        .any(|l| line_target_ok(l));
+    if working {
+        return ActivationStatus::Ok;
+    }
+    if !config.plugin_install_dir.join(plugin_name).is_dir() {
+        return ActivationStatus::NotInstalled;
+    }
+    match activation_line_for(config, plugin_name) {
+        Some(_) => ActivationStatus::Missing,
+        None => ActivationStatus::NoEntryScript,
+    }
+}
+
+/// Build the activation line for an installed plugin from what is on disk.
+///
+/// psmux: `plugin.conf` → `source-file`, `<name>.ps1` → `run-shell`.
+/// Otherwise the entry script found by [`find_plugin_entry`] → `run-shell`.
+/// Returns `None` when no entry point exists, so callers never write a path
+/// that is not there.
+pub fn activation_line_for(config: &TmuxConfig, plugin_name: &str) -> Option<String> {
+    let plugin_dir = config.plugin_install_dir.join(plugin_name);
+    if config.config_type == "psmux" {
+        let plugin_conf = plugin_dir.join("plugin.conf");
+        if plugin_conf.is_file() {
+            return Some(format!("source-file '{}'", to_tilde_path(&plugin_conf)));
+        }
+        let entry_ps1 = plugin_dir.join(format!("{}.ps1", plugin_name));
+        if entry_ps1.is_file() {
+            return Some(format!("run-shell '{}'", to_tilde_path(&entry_ps1)));
+        }
+    }
+    find_plugin_entry(&plugin_dir, plugin_name)
+        .map(|p| format!("run-shell '{}'", to_tilde_path(&p)))
+}
+
+/// Find a plugin's entry script.
+///
+/// TPM runs the `*.tmux` files at the top of the plugin directory, and their
+/// names rarely match the repo name (`tmux-resurrect` ships `resurrect.tmux`,
+/// `catppuccin/tmux` ships `catppuccin.tmux`). Order tried:
+///   1. `<name>.tmux`, then `<name>` without a `tmux-` prefix / `-tmux` suffix,
+///      also with `-` as `_` (`tmux-pain-control` → `pain_control.tmux`)
+///   2. the first other `*.tmux` file in the plugin dir (sorted)
+///   3. `<name>.ps1`, then the first `*.ps1` in the plugin dir
+///   4. the first `*.tmux` / `*.ps1` in `scripts/`, `plugin/`, `src/`
+pub fn find_plugin_entry(plugin_dir: &Path, plugin_name: &str) -> Option<PathBuf> {
+    if !plugin_dir.is_dir() {
+        return None;
+    }
+
+    let mut stems = vec![plugin_name.to_string()];
+    let trimmed = plugin_name
+        .strip_prefix("tmux-")
+        .or_else(|| plugin_name.strip_suffix("-tmux"))
+        .unwrap_or(plugin_name);
+    for s in [trimmed.to_string(), trimmed.replace('-', "_"), plugin_name.replace('-', "_")] {
+        if !stems.contains(&s) {
+            stems.push(s);
+        }
+    }
+    for stem in &stems {
+        let p = plugin_dir.join(format!("{}.tmux", stem));
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+
+    fn files_with_ext(dir: &Path, ext: &str) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = fs::read_dir(dir)
+            .map(|rd| rd.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default();
+        v.retain(|p| p.is_file() && p.extension().and_then(|e| e.to_str()) == Some(ext));
+        v.sort();
+        v
+    }
+
+    if let Some(p) = files_with_ext(plugin_dir, "tmux").into_iter().next() {
+        return Some(p);
+    }
+    let ps1 = plugin_dir.join(format!("{}.ps1", plugin_name));
+    if ps1.is_file() {
+        return Some(ps1);
+    }
+    if let Some(p) = files_with_ext(plugin_dir, "ps1").into_iter().next() {
+        return Some(p);
+    }
+    for sub in ["scripts", "plugin", "src"] {
+        let d = plugin_dir.join(sub);
+        for ext in ["tmux", "ps1"] {
+            if let Some(p) = files_with_ext(&d, ext).into_iter().next() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// The path an activation line (`run-shell`, `run`, `source-file`, `source`)
+/// points at, with `~` / `$HOME` expanded. `None` if it is not such a line.
+fn activation_target(line: &str) -> Option<PathBuf> {
+    let lt = line.trim();
+    let cmd = lt.split_whitespace().next()?;
+    if !matches!(cmd, "run-shell" | "run" | "source-file" | "source") {
+        return None;
+    }
+    let mut rest = lt[cmd.len()..].trim_start();
+    // Skip flags such as -b / -q
+    while rest.starts_with('-') {
+        rest = rest.splitn(2, char::is_whitespace).nth(1).unwrap_or("").trim_start();
+    }
+    let first = rest.chars().next()?;
+    let path = if first == '\'' || first == '"' {
+        let inner = &rest[1..];
+        &inner[..inner.find(first)?]
+    } else {
+        rest.split_whitespace().next()?
+    };
+    if path.is_empty() {
+        return None;
+    }
+    Some(expand_home(path))
+}
+
+/// True if the line's target exists, or it has no path we can check.
+fn line_target_ok(line: &str) -> bool {
+    match activation_target(line) {
+        Some(p) => p.to_string_lossy().contains('$') || p.exists(),
+        None => true,
+    }
+}
+
+/// True if `line` is an activation line whose path lives inside this
+/// plugin's directory: either `<install_dir>/<name>/...`, or any path with
+/// consecutive `plugins/<name>` components (for configs written by hand or
+/// pointing at another plugin root). Never a substring test.
+fn line_activates_plugin(line: &str, install_dir: &Path, plugin_name: &str) -> bool {
+    let target = match activation_target(line) {
+        Some(t) => t,
+        None => return false,
+    };
+    if target.starts_with(install_dir.join(plugin_name)) {
+        return true;
+    }
+    let comps: Vec<String> = target
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect();
+    comps.windows(2).any(|w| w[0] == "plugins" && w[1] == plugin_name)
+}
+
+/// The `org/repo` of a `set -g @plugin` line, if it is one.
+fn plugin_line_repo(line: &str) -> Option<String> {
+    let re = Regex::new(
+        r#"^\s*(?:#\s*)?set\s+(?:-g\s+)?@plugin\s+['"](?:(?:git@(?:github|bitbucket)\.com:|https?://github\.com/)?)([A-Za-z0-9._-]+/[A-Za-z0-9._-]+?)(?:\.git)?(?:#[A-Za-z0-9._/-]+)?['"]\s*$"#,
+    ).ok()?;
+    re.captures(line).map(|c| c[1].to_string())
 }
 
 // ── Config creation ─────────────────────────────────────────────────────
@@ -1684,6 +1842,154 @@ set -g status-position top
         assert!(removed);
         assert_eq!(cfg.plugins.len(), 1);
         assert_eq!(cfg.plugins[0].repo, "tmux-plugins/tpm");
+        cleanup_temp(&cfg);
+    }
+
+    /// Make a fake plugin install dir with the given plugins and entry files.
+    fn make_plugin_dir(files: &[(&str, &str)]) -> PathBuf {
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir()
+            .join("tmuxpanel-tests")
+            .join(format!("plugins-{}-{}", std::process::id(), id))
+            .join(".tmux")
+            .join("plugins");
+        for (plugin, file) in files {
+            let p = dir.join(plugin).join(file);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(&p, "#!/usr/bin/env bash\n").unwrap();
+        }
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn run_shell_line(dir: &Path, plugin: &str, file: &str) -> String {
+        format!("run-shell '{}'", to_tilde_path(&dir.join(plugin).join(file)))
+    }
+
+    // Issue #5: removing catppuccin/tmux (short name "tmux") used to delete
+    // every run-shell line, since they all contain the substring "tmux".
+    #[test]
+    fn test_remove_short_named_plugin_keeps_other_activation_lines() {
+        let dir = make_plugin_dir(&[
+            ("tmux-sensible", "sensible.tmux"),
+            ("tmux", "catppuccin.tmux"),
+            ("tmux-resurrect", "resurrect.tmux"),
+        ]);
+        let sensible = run_shell_line(&dir, "tmux-sensible", "sensible.tmux");
+        let catppuccin = run_shell_line(&dir, "tmux", "catppuccin.tmux");
+        let resurrect = run_shell_line(&dir, "tmux-resurrect", "resurrect.tmux");
+        let content = format!(
+            "# ── Plugins (managed by tmuxpanel) ──────────────────────\n\
+             set -g @plugin 'tmux-plugins/tmux-sensible'\n{}\n\
+             set -g @plugin 'catppuccin/tmux'\n{}\n\
+             set -g @plugin 'tmux-plugins/tmux-resurrect'\n{}\n\
+             source-file '~/.tmux/tmux.conf'\n\
+             # ── End plugins ──────────────────────────────────────\n",
+            sensible, catppuccin, resurrect
+        );
+        let mut cfg = make_temp_config(&content, "tmux");
+        cfg.plugin_install_dir = dir.clone();
+
+        assert!(remove_plugin_from_config(&mut cfg, "catppuccin/tmux").unwrap());
+        let after = fs::read_to_string(&cfg.path).unwrap();
+        assert!(!after.contains("catppuccin"), "catppuccin lines should be gone:\n{}", after);
+        assert!(after.contains(&sensible), "sensible activation lost:\n{}", after);
+        assert!(after.contains(&resurrect), "resurrect activation lost:\n{}", after);
+        assert!(after.contains("source-file '~/.tmux/tmux.conf'"), "unrelated source-file lost:\n{}", after);
+        assert_eq!(cfg.plugins.len(), 2);
+        cleanup_temp(&cfg);
+    }
+
+    // Issue #4: activation line must point at the real entry script.
+    #[test]
+    fn test_add_plugin_uses_real_entry_script() {
+        let dir = make_plugin_dir(&[
+            ("tmux-resurrect", "resurrect.tmux"),
+            ("tmux-pain-control", "pain_control.tmux"),
+            ("tmux", "catppuccin.tmux"),
+            ("tmux-better-mouse-mode", "scroll_copy_mode.tmux"),
+            ("vim-tmux-navigator", "vim-tmux-navigator.tmux"),
+        ]);
+        let mut cfg = make_temp_config("# test\n", "tmux");
+        cfg.plugin_install_dir = dir.clone();
+
+        for (repo, folder, file) in [
+            ("tmux-plugins/tmux-resurrect", "tmux-resurrect", "resurrect.tmux"),
+            ("tmux-plugins/tmux-pain-control", "tmux-pain-control", "pain_control.tmux"),
+            ("catppuccin/tmux", "tmux", "catppuccin.tmux"),
+            ("nhdaly/tmux-better-mouse-mode", "tmux-better-mouse-mode", "scroll_copy_mode.tmux"),
+            ("christoomey/vim-tmux-navigator", "vim-tmux-navigator", "vim-tmux-navigator.tmux"),
+        ] {
+            assert!(add_plugin_to_config(&mut cfg, repo, None).unwrap());
+            let after = fs::read_to_string(&cfg.path).unwrap();
+            let want = run_shell_line(&dir, folder, file);
+            assert!(after.contains(&want), "missing {} for {}:\n{}", want, repo, after);
+        }
+        // Every run-shell line written must point at a file that exists.
+        for l in cfg.lines.iter().filter(|l| l.starts_with("run-shell")) {
+            let p = activation_target(l).expect("quoted path");
+            assert!(p.is_file(), "activation line points at missing file: {}", l);
+        }
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_add_plugin_without_entry_writes_no_broken_line() {
+        let dir = make_plugin_dir(&[("no-entry", "README.md")]);
+        let mut cfg = make_temp_config("# test\n", "tmux");
+        cfg.plugin_install_dir = dir.clone();
+        assert!(add_plugin_to_config(&mut cfg, "someone/no-entry", None).unwrap());
+        let after = fs::read_to_string(&cfg.path).unwrap();
+        assert!(after.contains("@plugin 'someone/no-entry'"));
+        assert!(!after.contains("run-shell"), "no run-shell line expected:\n{}", after);
+        assert_eq!(plugin_activation_status(&cfg, "someone/no-entry"), ActivationStatus::NoEntryScript);
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_repair_adds_line_for_differently_named_entry() {
+        let dir = make_plugin_dir(&[("tmux-sensible", "sensible.tmux")]);
+        let mut cfg = make_temp_config("set -g @plugin 'tmux-plugins/tmux-sensible'\n", "tmux");
+        cfg.plugin_install_dir = dir.clone();
+        assert_eq!(repair_missing_activation_lines(&mut cfg), 1);
+        let after = fs::read_to_string(&cfg.path).unwrap();
+        assert!(after.contains(&run_shell_line(&dir, "tmux-sensible", "sensible.tmux")), "{}", after);
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_repair_replaces_line_pointing_at_missing_file() {
+        let dir = make_plugin_dir(&[
+            ("tmux-resurrect", "resurrect.tmux"),
+            ("tmux", "catppuccin.tmux"),
+        ]);
+        let broken = run_shell_line(&dir, "tmux-resurrect", "tmux-resurrect.tmux");
+        let broken_cat = run_shell_line(&dir, "tmux", "tmux.tmux");
+        let content = format!(
+            "set -g @plugin 'tmux-plugins/tmux-resurrect'\n{}\nset -g @plugin 'catppuccin/tmux'\n{}\n",
+            broken, broken_cat
+        );
+        let mut cfg = make_temp_config(&content, "tmux");
+        cfg.plugin_install_dir = dir.clone();
+        assert_eq!(repair_missing_activation_lines(&mut cfg), 2);
+        let after = fs::read_to_string(&cfg.path).unwrap();
+        assert!(!after.contains(&broken), "{}", after);
+        assert!(!after.contains(&broken_cat), "{}", after);
+        assert!(after.contains(&run_shell_line(&dir, "tmux-resurrect", "resurrect.tmux")), "{}", after);
+        assert!(after.contains(&run_shell_line(&dir, "tmux", "catppuccin.tmux")), "{}", after);
+        // Running repair again changes nothing.
+        assert_eq!(repair_missing_activation_lines(&mut cfg), 0);
+        cleanup_temp(&cfg);
+    }
+
+    #[test]
+    fn test_readding_existing_plugin_repairs_missing_activation() {
+        let dir = make_plugin_dir(&[("tmux-sensible", "sensible.tmux")]);
+        let mut cfg = make_temp_config("set -g @plugin 'tmux-plugins/tmux-sensible'\n", "tmux");
+        cfg.plugin_install_dir = dir.clone();
+        assert!(!add_plugin_to_config(&mut cfg, "tmux-plugins/tmux-sensible", None).unwrap());
+        let after = fs::read_to_string(&cfg.path).unwrap();
+        assert!(after.contains(&run_shell_line(&dir, "tmux-sensible", "sensible.tmux")), "{}", after);
         cleanup_temp(&cfg);
     }
 
