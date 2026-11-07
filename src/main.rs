@@ -3,6 +3,7 @@
 /// A full-fledged TUI alternative to TPM (tmux plugin manager).
 /// Browse, install, remove, and update tmux plugins and themes.
 mod app;
+mod cli;
 mod config;
 mod detect;
 mod github;
@@ -26,6 +27,17 @@ use registry::Category;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // ── CLI mode: `tmuxpanel install|remove|update|sync|list ...` ──
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match cli::parse_args(&args) {
+        Ok(Some(inv)) => std::process::exit(cli::run(inv)),
+        Ok(None) => {}
+        Err(e) => {
+            eprintln!("error: {}\n\n{}", e, cli::USAGE);
+            std::process::exit(2);
+        }
+    }
+
     // ── Terminal setup ─────────────────────────────────────────────
     enable_raw_mode()?;
     let mut stdout = io::stdout();

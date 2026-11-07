@@ -130,7 +130,7 @@ After installation, three commands are available:
 ### Prerequisites
 
 - **[tmux](https://github.com/tmux/tmux)** on Linux/macOS — or **[PSMux](https://github.com/marlocarlo/psmux)** on Windows
-- **git** (for cloning plugins)
+- **git** on PATH (for cloning plugins). On Windows: `winget install Git.Git`
 
 ### First Run
 
@@ -138,6 +138,23 @@ After installation, three commands are available:
 2. If no `tmux.conf` exists, press `c` to create one
 3. Browse plugins → press `Enter` to install
 4. Press `R` to reload tmux with your new plugins
+
+## Command Line
+
+Everything the TUI does for plugins also works from the shell, so you can script it or keep your plugin list only in your config:
+
+```powershell
+tmuxpanel install catppuccin/tmux tmux-plugins/tmux-yank   # clone and add to the config
+tmuxpanel remove tmux-plugins/tmux-yank                    # delete and remove from the config
+tmuxpanel update                                           # git pull every plugin (or name some)
+tmuxpanel sync                                             # install every @plugin line not on disk yet
+tmuxpanel list                                             # what the config declares and whether it loads
+tmuxpanel --help
+```
+
+Use `--config <path>` to pick a config file. Without it the first config found is used (`~/.psmux.conf`, `~/.tmux.conf`, and so on), the same one the TUI opens.
+
+**Config only workflow:** add `set -g @plugin 'org/repo'` lines to your `.psmux.conf` or `.tmux.conf`, then run `tmuxpanel sync`. It clones what is missing and writes the matching `run-shell` / `source-file` line for each plugin.
 
 ## Keybindings
 
@@ -219,7 +236,9 @@ set -g @plugin 'catppuccin/tmux'
 set -g @plugin 'tmux-plugins/tmux-resurrect'
 ```
 
-Plugins are installed to `~/.tmux/plugins/` by default.
+Plugins are installed to `~/.tmux/plugins/` by default (`~/.psmux/plugins/` for psmux).
+
+Without TPM, tmuxpanel adds an activation line next to each `@plugin` line that points at the plugin's real entry script, for example `run-shell '~/.tmux/plugins/tmux-resurrect/resurrect.tmux'`. Run `tmuxpanel sync` to add any that are missing or broken.
 
 ## Environment Variables
 
