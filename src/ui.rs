@@ -3,7 +3,7 @@
 /// Draws all tabs, the overlay dialogs, status bar, and keybinding footer.
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{
         Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap,
