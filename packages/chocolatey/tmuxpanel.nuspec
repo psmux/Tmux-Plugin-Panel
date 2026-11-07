@@ -6,17 +6,17 @@
     <title>tmuxpanel — Tmux Plugin Panel</title>
     <authors>Godwin Sam Josh</authors>
     <owners>marlocarlo</owners>
-    <licenseUrl>https://github.com/marlocarlo/Tmux-Plugin-Panel/blob/master/LICENSE</licenseUrl>
-    <projectUrl>https://github.com/marlocarlo/Tmux-Plugin-Panel</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/marlocarlo/Tmux-Plugin-Panel/master/icon.png</iconUrl>
+    <licenseUrl>https://github.com/psmux/Tmux-Plugin-Panel/blob/master/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/psmux/Tmux-Plugin-Panel</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/psmux/Tmux-Plugin-Panel/master/icon.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>A full-fledged TUI plugin panel for tmux — the modern alternative to TPM. Browse, install, remove, update, and theme your tmux from a beautiful terminal interface. Includes tmuxpanel, tmuxplugins, and tmuxthemes commands.</description>
     <summary>TUI plugin manager for tmux — browse, install, theme (TPM alternative)</summary>
-    <releaseNotes>https://github.com/marlocarlo/Tmux-Plugin-Panel/releases</releaseNotes>
+    <releaseNotes>https://github.com/psmux/Tmux-Plugin-Panel/releases</releaseNotes>
     <tags>tmux plugin manager tui terminal theme tmuxpanel tmuxplugins tmuxthemes</tags>
-    <packageSourceUrl>https://github.com/marlocarlo/Tmux-Plugin-Panel</packageSourceUrl>
-    <docsUrl>https://github.com/marlocarlo/Tmux-Plugin-Panel#readme</docsUrl>
-    <bugTrackerUrl>https://github.com/marlocarlo/Tmux-Plugin-Panel/issues</bugTrackerUrl>
+    <packageSourceUrl>https://github.com/psmux/Tmux-Plugin-Panel</packageSourceUrl>
+    <docsUrl>https://github.com/psmux/Tmux-Plugin-Panel#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/psmux/Tmux-Plugin-Panel/issues</bugTrackerUrl>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />

@@ -9,13 +9,13 @@
 <h1 align="center">⌨️ Tmux Plugin Panel</h1>
 
 <p align="center">
-  <b>The best way to install plugins and themes for both <a href="https://github.com/marlocarlo/psmux">PSMux</a> and Tmux.</b><br>
+  <b>The best way to install plugins and themes for both <a href="https://github.com/psmux/psmux">PSMux</a> and Tmux.</b><br>
   A full-featured TUI plugin manager — the modern alternative to TPM.<br>
   Browse, install, remove, update, and theme your tmux — all from a beautiful terminal interface.
 </p>
 
 <p align="center">
-  🪟 Need native tmux for PowerShell? Install <a href="https://github.com/marlocarlo/psmux"><b>PSMux</b></a> on Windows: <code>winget install psmux</code>
+  🪟 Need native tmux for PowerShell? Install <a href="https://github.com/psmux/psmux"><b>PSMux</b></a> on Windows: <code>winget install psmux</code>
 </p>
 
 <p align="center">
@@ -62,7 +62,7 @@ choco install tmuxpanel
 ### Via Scoop (Windows)
 
 ```powershell
-scoop bucket add tmuxpanel https://github.com/marlocarlo/scoop-tmuxpanel
+scoop bucket add tmuxpanel https://github.com/psmux/scoop-tmuxpanel
 scoop install tmuxpanel
 ```
 
@@ -74,7 +74,7 @@ winget install marlocarlo.tmuxpanel
 
 ### From GitHub Releases — Pre-built binaries
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/marlocarlo/Tmux-Plugin-Panel/releases):
+Download the latest release for your platform from [GitHub Releases](https://github.com/psmux/Tmux-Plugin-Panel/releases):
 
 | Platform | Archive |
 |----------|---------|
@@ -89,7 +89,7 @@ Download the latest release for your platform from [GitHub Releases](https://git
 ### From Source
 
 ```bash
-git clone https://github.com/marlocarlo/Tmux-Plugin-Panel.git
+git clone https://github.com/psmux/Tmux-Plugin-Panel.git
 cd Tmux-Plugin-Panel
 cargo build --release
 ./target/release/tmuxpanel
@@ -104,14 +104,14 @@ After installation, three commands are available:
 
 ## Why Tmux Plugin Panel?
 
-[TPM](https://github.com/tmux-plugins/tpm) works, but it's a shell script with no UI, no search, no browsing. **Tmux Plugin Panel** gives you a complete graphical plugin manager — think "app store for tmux" — right inside your terminal. Works with both **tmux** on Linux/macOS and [**PSMux**](https://github.com/marlocarlo/psmux) on Windows.
+[TPM](https://github.com/tmux-plugins/tpm) works, but it's a shell script with no UI, no search, no browsing. **Tmux Plugin Panel** gives you a complete graphical plugin manager — think "app store for tmux" — right inside your terminal. Works with both **tmux** on Linux/macOS and [**PSMux**](https://github.com/psmux/psmux) on Windows.
 
 - **Browse** a curated registry of 40+ plugins, sorted by category and stars
 - **Search** GitHub for any tmux plugin in real-time
 - **One-key install/remove/update** — no editing config files manually
 - **Theme gallery** — preview and switch tmux themes instantly
 - **Settings editor** — toggle tmux options (mouse, status bar, keybindings) without memorizing `set -g` syntax
-- **Auto-detection** — finds tmux and [**PSMux**](https://github.com/marlocarlo/psmux) installations, versions, and config files automatically
+- **Auto-detection** — finds tmux and [**PSMux**](https://github.com/psmux/psmux) installations, versions, and config files automatically
 - **Config management** — creates, parses, and updates `tmux.conf` / `psmux.conf` for you
 - **Offline fallback** — ships with an embedded plugin registry; works without internet
 
@@ -129,7 +129,7 @@ After installation, three commands are available:
 
 ### Prerequisites
 
-- **[tmux](https://github.com/tmux/tmux)** on Linux/macOS — or **[PSMux](https://github.com/marlocarlo/psmux)** on Windows
+- **[tmux](https://github.com/tmux/tmux)** on Linux/macOS — or **[PSMux](https://github.com/psmux/psmux)** on Windows
 - **git** on PATH (for cloning plugins). On Windows: `winget install Git.Git`
 
 ### First Run

@@ -38,7 +38,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$RepoOwner = "marlocarlo"
+$RepoOwner = "psmux"
 $RepoName = "Tmux-Plugin-Panel"
 $PackageId = "tmuxpanel"
 

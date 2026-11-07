@@ -605,7 +605,7 @@ pub fn reset_all_settings(config: &mut TmuxConfig) -> Result<usize> {
 ///   - default-terminal: screen
 ///
 /// ## PSMux factory defaults
-/// Based on the PSMux project (marlocarlo/psmux on GitHub):
+/// Based on the PSMux project (psmux/psmux on GitHub):
 ///   - prefix: C-b (same as tmux)
 ///   - escape-time: 500ms
 ///   - base-index: 0
@@ -644,7 +644,7 @@ pub fn reset_entire_config(config: &mut TmuxConfig) -> Result<()> {
 # PSMux Configuration — Factory Defaults
 # ─────────────────────────────────────────────────────────────
 # Reset to defaults by tmuxpanel — Tmux Plugin Panel
-# For more info: https://github.com/marlocarlo/psmux
+# For more info: https://github.com/psmux/psmux
 #
 # PSMux built-in defaults are applied automatically.
 # Uncomment and change any line below to override a default.
@@ -1469,7 +1469,7 @@ pub fn create_default_config(config_type: &str) -> Result<TmuxConfig> {
             let c = "# PSMux configuration\n\
                      # Managed by tmuxpanel — Tmux Plugin Panel\n\
                      #\n\
-                     # For more info: https://github.com/marlocarlo/psmux\n\
+                     # For more info: https://github.com/psmux/psmux\n\
                      \n\
                      # Enable mouse\n\
                      set -g mouse on\n\
@@ -1784,7 +1784,7 @@ set -g status-position top
         let content = fs::read_to_string(&cfg.path).unwrap();
         assert!(content.contains("PSMux Configuration"));
         assert!(content.contains("Factory Defaults"));
-        assert!(content.contains("marlocarlo/psmux"));
+        assert!(content.contains("github.com/psmux/psmux"));
 
         // PSMux-specific: mouse default should be "on" (not "off" like tmux!)
         assert!(content.contains("Mouse support (PSMux default: on"));

@@ -216,7 +216,7 @@ jobs:
           body: |
             ## Tmux Plugin Panel ${{ github.ref_name }}
             
-            The best way to install plugins and themes for both [**PSMux**](https://github.com/marlocarlo/psmux) and **tmux**.
+            The best way to install plugins and themes for both [**PSMux**](https://github.com/psmux/psmux) and **tmux**.
             
             ### Downloads
             | Platform | File |
@@ -238,7 +238,7 @@ jobs:
             
             **Via Scoop (Windows):**
             ```powershell
-            scoop bucket add tmuxpanel https://github.com/marlocarlo/scoop-tmuxpanel
+            scoop bucket add tmuxpanel https://github.com/psmux/scoop-tmuxpanel
             scoop install tmuxpanel
             ```
             
@@ -257,7 +257,7 @@ jobs:
             2. Extract to a folder in your PATH
             3. `tmuxpanel`, `tmuxplugins`, and `tmuxthemes` commands will all be available
             
-            > 🪟 Need native tmux for PowerShell? Install [PSMux](https://github.com/marlocarlo/psmux): `winget install psmux`
+            > 🪟 Need native tmux for PowerShell? Install [PSMux](https://github.com/psmux/psmux): `winget install psmux`
             
             ### What's Included
             - `tmuxpanel` — Main TUI plugin manager
@@ -535,7 +535,7 @@ jobs:
       - name: Clone scoop bucket repo
         shell: bash
         run: |
-          git clone https://x-access-token:${{ secrets.WINGET_PAT }}@github.com/marlocarlo/scoop-tmuxpanel.git scoop-bucket
+          git clone https://x-access-token:${{ secrets.WINGET_PAT }}@github.com/psmux/scoop-tmuxpanel.git scoop-bucket
 
       - name: Update scoop manifest
         shell: bash
@@ -554,7 +554,7 @@ jobs:
           {
               "version": "$ver",
               "description": "A full-fledged TUI plugin panel for tmux — the modern alternative to TPM",
-              "homepage": "https://github.com/marlocarlo/Tmux-Plugin-Panel",
+              "homepage": "https://github.com/psmux/Tmux-Plugin-Panel",
               "license": "MIT",
               "architecture": {
                   "64bit": {
@@ -576,18 +576,18 @@ jobs:
                   "tmuxthemes.exe"
               ],
               "checkver": {
-                  "github": "https://github.com/marlocarlo/Tmux-Plugin-Panel"
+                  "github": "https://github.com/psmux/Tmux-Plugin-Panel"
               },
               "autoupdate": {
                   "architecture": {
                       "64bit": {
-                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-x64.zip"
+                          "url": "https://github.com/psmux/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-x64.zip"
                       },
                       "32bit": {
-                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-x86.zip"
+                          "url": "https://github.com/psmux/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-x86.zip"
                       },
                       "arm64": {
-                          "url": "https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-arm64.zip"
+                          "url": "https://github.com/psmux/Tmux-Plugin-Panel/releases/download/v\$version/tmuxpanel-v\$version-windows-arm64.zip"
                       }
                   }
               }
@@ -763,11 +763,11 @@ jobs:
           PackageLocale: en-US
           Publisher: marlocarlo
           PublisherUrl: https://github.com/marlocarlo
-          PublisherSupportUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel/issues
+          PublisherSupportUrl: https://github.com/psmux/Tmux-Plugin-Panel/issues
           PackageName: tmuxpanel
-          PackageUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel
+          PackageUrl: https://github.com/psmux/Tmux-Plugin-Panel
           License: MIT
-          LicenseUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel/blob/master/LICENSE
+          LicenseUrl: https://github.com/psmux/Tmux-Plugin-Panel/blob/master/LICENSE
           Copyright: Copyright (c) Godwin Sam Josh
           ShortDescription: A full-fledged TUI plugin panel for tmux — the modern alternative to TPM
           Description: |-
@@ -786,7 +786,7 @@ jobs:
           - tmuxpanel
           - tmuxplugins
           - tmuxthemes
-          ReleaseNotesUrl: https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/tag/$tag
+          ReleaseNotesUrl: https://github.com/psmux/Tmux-Plugin-Panel/releases/tag/$tag
           ManifestType: defaultLocale
           ManifestVersion: 1.9.0
           "@ -replace '(?m)^\s{10}','' | Set-Content "$outDir/$pkgId.locale.en-US.yaml" -Encoding utf8NoBOM

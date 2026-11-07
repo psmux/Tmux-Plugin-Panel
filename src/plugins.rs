@@ -16,7 +16,7 @@ use crate::registry;
 /// individual repo, we fall back to cloning the full monorepo and extracting
 /// just the `<name>` subdirectory.
 const MONOREPO_MAP: &[(&str, &str)] = &[
-    ("psmux-plugins", "marlocarlo/psmux-plugins"),
+    ("psmux-plugins", "psmux/psmux-plugins"),
 ];
 
 /// If `repo` is `<org>/<name>` and `<org>` is in MONOREPO_MAP, clone the

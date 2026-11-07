@@ -12,7 +12,7 @@
 $ErrorActionPreference = 'Stop'
 
 $toolsDir = "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)"
-$url64 = 'https://github.com/marlocarlo/Tmux-Plugin-Panel/releases/download/v__VERSION__/tmuxpanel-v__VERSION__-windows-x64.zip'
+$url64 = 'https://github.com/psmux/Tmux-Plugin-Panel/releases/download/v__VERSION__/tmuxpanel-v__VERSION__-windows-x64.zip'
 
 $packageArgs = @{
   packageName    = $env:ChocolateyPackageName
