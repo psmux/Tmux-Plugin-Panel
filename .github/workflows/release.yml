@@ -82,6 +82,58 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      # Developer ID signing and notarization for the macOS binaries.
+      # Plain CLI binaries cannot carry a stapled ticket, so Gatekeeper
+      # checks the notarization online on first run.
+      - name: Sign and notarize (macOS)
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then echo "::error::secret $v is not set"; exit 1; fi
+          done
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          P12="$RUNNER_TEMP/cert.p12"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$P12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$P12" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$P12"
+
+          dir="target/${{ matrix.target }}/release"
+          for bin in tmuxpanel tmuxplugins tmuxthemes; do
+            codesign --force --options runtime --timestamp --keychain "$KEYCHAIN" \
+              --sign "$APPLE_SIGNING_IDENTITY" "$dir/$bin"
+            codesign --verify --strict --verbose=2 "$dir/$bin"
+            codesign -dvv "$dir/$bin" 2>&1 | grep -q 'Authority=Developer ID Application' \
+              || { echo "::error::$bin is not signed with a Developer ID"; exit 1; }
+          done
+
+          zip_path="$RUNNER_TEMP/notarize-${{ matrix.artifact }}.zip"
+          (cd "$dir" && zip -q "$zip_path" tmuxpanel tmuxplugins tmuxthemes)
+          xcrun notarytool submit "$zip_path" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait --timeout 30m --output-format json > "$RUNNER_TEMP/notary.json"
+          cat "$RUNNER_TEMP/notary.json"
+          grep -q '"status" *: *"Accepted"' "$RUNNER_TEMP/notary.json" \
+            || { echo "::error::notarization was not accepted"; exit 1; }
+
+      - name: Remove signing keychain (macOS)
+        if: always() && runner.os == 'macOS' && github.ref_type == 'tag'
+        shell: bash
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+
       # Parallel legs sign one at a time.
       - name: Stagger signing
         if: runner.os == 'Windows' && github.ref_type == 'tag'
