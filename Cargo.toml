@@ -39,3 +39,6 @@ serde_json = "1"
 regex = "1"
 dirs = "7"
 anyhow = "1"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"

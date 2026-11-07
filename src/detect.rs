@@ -374,35 +374,25 @@ fn resolve_binary_path(name: &str) -> Option<PathBuf> {
 
 // ── WSL helpers ─────────────────────────────────────────────────────────
 
-/// Names of WSL distros registered for this user, read from
-/// HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss with reg.exe.
-/// Empty when WSL is not installed. Never starts WSL itself.
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+/// Names of WSL distros registered for this user, read directly from
+/// HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss (no child process,
+/// so it adds well under a millisecond to startup). Empty when WSL is not
+/// installed. Never starts WSL itself.
+#[cfg(target_os = "windows")]
 fn registered_wsl_distros() -> Vec<String> {
-    let out = Command::new("reg")
-        .args([
-            "query",
-            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss",
-            "/s",
-            "/v",
-            "DistributionName",
-        ])
-        .output();
-    match out {
-        Ok(o) if o.status.success() => parse_reg_distro_names(&String::from_utf8_lossy(&o.stdout)),
-        _ => Vec::new(),
-    }
-}
-
-/// Parse `reg query ... /v DistributionName` output into distro names.
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-fn parse_reg_distro_names(out: &str) -> Vec<String> {
-    out.lines()
-        .filter_map(|l| {
-            let rest = l.trim().strip_prefix("DistributionName")?.trim_start();
-            let name = rest.strip_prefix("REG_SZ")?.trim();
-            (!name.is_empty()).then(|| name.to_string())
-        })
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let lxss = match RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Lxss")
+    {
+        Ok(k) => k,
+        Err(_) => return Vec::new(),
+    };
+    lxss.enum_keys()
+        .flatten()
+        .filter_map(|guid| lxss.open_subkey(&guid).ok())
+        .filter_map(|k| k.get_value::<String, _>("DistributionName").ok())
+        .filter(|n| !n.trim().is_empty())
         .collect()
 }
 
@@ -655,25 +645,29 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_reg_distro_names() {
-        let out = r"
-HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Lxss\{a}
-    DistributionName    REG_SZ    Ubuntu-24.04
-
-HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Lxss\{b}
-    DistributionName    REG_SZ    docker-desktop
-
-End of search: 2 match(es) found.
-";
-        assert_eq!(parse_reg_distro_names(out), vec!["Ubuntu-24.04", "docker-desktop"]);
-        assert!(parse_reg_distro_names("ERROR: The system was unable to find the specified registry key or value.").is_empty());
+    fn test_wsl_home_candidates_for_distro() {
         let c = wsl_home_candidates(&["Ubuntu-24.04".to_string()], "me");
         assert_eq!(c[0], PathBuf::from(r"\\wsl.localhost\Ubuntu-24.04\home\me"));
+        assert_eq!(c[1], PathBuf::from(r"\\wsl$\Ubuntu-24.04\home\me"));
     }
 
+    // Must agree with what reg.exe reports for the same key.
     #[cfg(target_os = "windows")]
     #[test]
-    fn test_registered_wsl_distros_does_not_panic() {
-        let _ = registered_wsl_distros();
+    fn test_registered_wsl_distros_matches_reg_exe() {
+        let ours = registered_wsl_distros();
+        let out = Command::new("reg")
+            .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss", "/s", "/v", "DistributionName"])
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        let theirs: Vec<String> = text
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("DistributionName")?.trim_start().strip_prefix("REG_SZ").map(|n| n.trim().to_string()))
+            .collect();
+        let (mut a, mut b) = (ours, theirs);
+        a.sort();
+        b.sort();
+        assert_eq!(a, b);
     }
 }
