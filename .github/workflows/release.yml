@@ -719,6 +719,7 @@ jobs:
 
           # ---- Version manifest ----
           @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.9.0.schema.json
           PackageIdentifier: $pkgId
           PackageVersion: $ver
           DefaultLocale: en-US
@@ -728,6 +729,7 @@ jobs:
 
           # ---- Installer manifest ----
           @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
           PackageIdentifier: $pkgId
           PackageVersion: $ver
           Platform:
@@ -758,6 +760,7 @@ jobs:
 
           # ---- Default locale manifest ----
           @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
           PackageIdentifier: $pkgId
           PackageVersion: $ver
           PackageLocale: en-US
@@ -769,7 +772,7 @@ jobs:
           License: MIT
           LicenseUrl: https://github.com/psmux/Tmux-Plugin-Panel/blob/master/LICENSE
           Copyright: Copyright (c) Godwin Sam Josh
-          ShortDescription: A full-fledged TUI plugin panel for tmux — the modern alternative to TPM
+          ShortDescription: A full-fledged TUI plugin panel for tmux, a modern alternative to TPM
           Description: |-
             Tmux Plugin Panel is a TUI plugin manager for tmux, providing a complete
             graphical interface to browse, install, remove, update, and theme your tmux
