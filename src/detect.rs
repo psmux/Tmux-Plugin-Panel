@@ -372,6 +372,55 @@ fn resolve_binary_path(name: &str) -> Option<PathBuf> {
 
 // ── Config location detection ───────────────────────────────────────────
 
+// ── WSL helpers ─────────────────────────────────────────────────────────
+
+/// Names of WSL distros registered for this user, read from
+/// HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss with reg.exe.
+/// Empty when WSL is not installed. Never starts WSL itself.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn registered_wsl_distros() -> Vec<String> {
+    let out = Command::new("reg")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss",
+            "/s",
+            "/v",
+            "DistributionName",
+        ])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => parse_reg_distro_names(&String::from_utf8_lossy(&o.stdout)),
+        _ => Vec::new(),
+    }
+}
+
+/// Parse `reg query ... /v DistributionName` output into distro names.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn parse_reg_distro_names(out: &str) -> Vec<String> {
+    out.lines()
+        .filter_map(|l| {
+            let rest = l.trim().strip_prefix("DistributionName")?.trim_start();
+            let name = rest.strip_prefix("REG_SZ")?.trim();
+            (!name.is_empty()).then(|| name.to_string())
+        })
+        .collect()
+}
+
+/// UNC home directories to probe for the given distros. No distros in,
+/// nothing out: no \\wsl$ path is touched when WSL has no distros.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn wsl_home_candidates(distros: &[String], username: &str) -> Vec<PathBuf> {
+    distros
+        .iter()
+        .flat_map(|d| {
+            [
+                PathBuf::from(format!(r"\\wsl.localhost\{}\home\{}", d, username)),
+                PathBuf::from(format!(r"\\wsl$\{}\home\{}", d, username)),
+            ]
+        })
+        .collect()
+}
+
 fn detect_config_locations(platform: &Platform) -> Vec<ConfigLocation> {
     let home = &platform.home_dir;
     let xdg = &platform.xdg_config;
@@ -490,17 +539,13 @@ fn detect_config_locations(platform: &Platform) -> Vec<ConfigLocation> {
             }
         }
 
-        // WSL interop — if running natively on Windows, check common WSL distro paths
-        // These are accessible via \\wsl$\<distro>\ paths
-        let wsl_paths = vec![
-            PathBuf::from(r"\\wsl$\Ubuntu\home"),
-            PathBuf::from(r"\\wsl$\Debian\home"),
-            PathBuf::from(r"\\wsl.localhost\Ubuntu\home"),
-            PathBuf::from(r"\\wsl.localhost\Debian\home"),
-        ];
+        // WSL interop: check the home dir of each *registered* WSL distro via
+        // \\wsl.localhost\<distro>\. The distro list comes from the registry
+        // first, because touching \\wsl$ paths on a machine without WSL makes
+        // Windows offer to install WSL on every launch.
         if let Some(username) = home.file_name() {
-            for wsl_home_parent in &wsl_paths {
-                let wsl_user_home = wsl_home_parent.join(username);
+            let distros = registered_wsl_distros();
+            for wsl_user_home in wsl_home_candidates(&distros, &username.to_string_lossy()) {
                 if wsl_user_home.exists() {
                     add_loc!(wsl_user_home.join(".tmux.conf"), MuxKind::Tmux,
                         "WSL tmux config");
@@ -595,5 +640,40 @@ pub fn default_install_dir(config_path: &Path, kind: MuxKind) -> PathBuf {
                 home.join(".tmux").join("plugins")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Issue #2: tmuxpanel made Windows offer to install WSL on every launch,
+    // because it probed hard coded \wsl$\Ubuntu paths even with no WSL.
+    #[test]
+    fn test_no_wsl_paths_probed_without_distros() {
+        assert!(wsl_home_candidates(&[], "someone").is_empty());
+    }
+
+    #[test]
+    fn test_parse_reg_distro_names() {
+        let out = r"
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Lxss\{a}
+    DistributionName    REG_SZ    Ubuntu-24.04
+
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Lxss\{b}
+    DistributionName    REG_SZ    docker-desktop
+
+End of search: 2 match(es) found.
+";
+        assert_eq!(parse_reg_distro_names(out), vec!["Ubuntu-24.04", "docker-desktop"]);
+        assert!(parse_reg_distro_names("ERROR: The system was unable to find the specified registry key or value.").is_empty());
+        let c = wsl_home_candidates(&["Ubuntu-24.04".to_string()], "me");
+        assert_eq!(c[0], PathBuf::from(r"\\wsl.localhost\Ubuntu-24.04\home\me"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_registered_wsl_distros_does_not_panic() {
+        let _ = registered_wsl_distros();
     }
 }

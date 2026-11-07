@@ -183,7 +183,26 @@ fn run_git(args: &[&str], cwd: Option<&Path>) -> (bool, String) {
                 .join(" ");
             (output.status.success(), msg)
         }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, GIT_MISSING.to_string()),
         Err(e) => (false, format!("git error: {}", e)),
+    }
+}
+
+/// Shown when the `git` executable cannot be started at all.
+const GIT_MISSING: &str = "git is not installed or not on PATH. tmuxpanel downloads plugins with git. \
+Install it (Windows: winget install Git.Git, macOS: xcode-select --install, Linux: your package manager) \
+and open a new terminal.";
+
+/// `Some(message)` when git cannot be run, so callers can stop early with a
+/// clear reason instead of a chain of "program not found" errors.
+pub fn git_missing() -> Option<&'static str> {
+    git_missing_with("git")
+}
+
+fn git_missing_with(program: &str) -> Option<&'static str> {
+    match Command::new(program).arg("--version").output() {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(GIT_MISSING),
+        _ => None,
     }
 }
 
@@ -322,6 +341,12 @@ pub fn install_plugin(
     let plugin_name = repo.split('/').last().unwrap_or(repo);
     let target_dir = install_dir.join(plugin_name);
 
+    if !target_dir.exists() {
+        if let Some(msg) = git_missing() {
+            return OpResult { success: false, message: msg.to_string() };
+        }
+    }
+
     if target_dir.exists() {
         // If it has a .git dir OR contains real content (e.g. plugin.conf,
         // scripts), treat it as a valid prior install.  PSMux themes that
@@ -414,7 +439,19 @@ pub fn install_plugin(
 
     OpResult {
         success: true,
-        message: format!("Installed '{}' successfully", plugin_name),
+        message: with_activation_warning(config, repo, format!("Installed '{}' successfully", plugin_name)),
+    }
+}
+
+/// Append a warning when the plugin was installed but will not load because
+/// no entry script could be found for a non-TPM config.
+fn with_activation_warning(config: &TmuxConfig, repo: &str, msg: String) -> String {
+    match config::plugin_activation_status(config, repo) {
+        config::ActivationStatus::NoEntryScript => format!(
+            "{}, but no .tmux/.ps1 entry script was found, so no run-shell line was added. Add one to your config by hand.",
+            msg
+        ),
+        _ => msg,
     }
 }
 
@@ -587,6 +624,13 @@ pub fn preview_plugin(
     let plugin_name = repo.split('/').last().unwrap_or(repo);
 
     // Create temp directory for preview
+    let installed_dir = config.plugin_install_dir.join(plugin_name);
+    if !installed_dir.exists() {
+        if let Some(msg) = git_missing() {
+            return OpResult { success: false, message: msg.to_string() };
+        }
+    }
+
     let tmp_base = env::temp_dir().join("tmuxpanel-preview");
     let _ = fs::create_dir_all(&tmp_base);
     let preview_dir = tmp_base.join(format!("preview-{}", plugin_name));
@@ -816,51 +860,10 @@ pub fn preview_plugin(
                 }
             }
         } else {
-            // tmux mode — use run-shell as before (bash scripts work on Linux/macOS)
-            if entry_tmux.exists() {
-                conf_lines.push(format!("run-shell '{}'", entry_tmux.display()));
-            } else if entry_ps1.exists() {
-                conf_lines.push(format!("run-shell '{}'", entry_ps1.display()));
-            } else {
-                let mut found_entry = false;
-                if let Ok(entries) = fs::read_dir(&target_dir) {
-                    for entry in entries.flatten() {
-                        let p = entry.path();
-                        if p.is_file() {
-                            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-                            if ext == "tmux" {
-                                conf_lines.push(format!("run-shell '{}'", p.display()));
-                                found_entry = true;
-                                break;
-                            } else if ext == "ps1" {
-                                conf_lines.push(format!("run-shell '{}'", p.display()));
-                                found_entry = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if !found_entry {
-                    for subdir in &["scripts", "plugin", "src"] {
-                        let sub = target_dir.join(subdir);
-                        if sub.is_dir() {
-                            if let Ok(entries) = fs::read_dir(&sub) {
-                                for entry in entries.flatten() {
-                                    let p = entry.path();
-                                    if p.is_file() {
-                                        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-                                        if ext == "tmux" || ext == "ps1" {
-                                            conf_lines.push(format!("run-shell '{}'", p.display()));
-                                            found_entry = true;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if found_entry { break; }
-                    }
-                }
+            // tmux mode: run the plugin's entry script (same discovery as
+            // the activation lines written to the real config).
+            if let Some(entry) = config::find_plugin_entry(&target_dir, plugin_name) {
+                conf_lines.push(format!("run-shell '{}'", entry.display()));
             }
         }
     }
@@ -1091,5 +1094,25 @@ pub fn activate_theme(
             plugin_name,
             if reload.success { reload.message } else { "Restart mux to apply.".to_string() }
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Issue #2: with no git on PATH every install failed with a chain of
+    // "git error: program not found" messages. A missing binary must map to
+    // one clear message that says what to install.
+    #[test]
+    fn test_missing_git_gives_clear_message() {
+        let msg = git_missing_with("tmuxpanel-not-a-real-git-binary").expect("should detect missing git");
+        assert!(msg.contains("git is not installed"));
+        assert!(msg.contains("winget install Git.Git"));
+    }
+
+    #[test]
+    fn test_git_present_is_not_reported_missing() {
+        assert!(git_missing().is_none());
     }
 }
